@@ -1,0 +1,87 @@
+#!/bin/bash
+set -e
+
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+echo "========================================="
+echo "  Squat Coach — Local Setup"
+echo "  Run once with internet, then go offline"
+echo "========================================="
+echo ""
+
+# ---- Python deps ----
+echo "[1/4] Installing Python dependencies..."
+"$PYTHON_BIN" -m pip install fastapi uvicorn --quiet 2>/dev/null || "$PYTHON_BIN" -m pip install fastapi uvicorn --break-system-packages --quiet
+
+# ---- MediaPipe WASM runtime ----
+MEDIAPIPE_VERSION="0.10.32"
+WASM_DIR="static/mediapipe/wasm"
+JS_DIR="static/mediapipe"
+NODE_MEDIAPIPE_DIR="node_modules/@mediapipe/tasks-vision"
+mkdir -p "$WASM_DIR"
+mkdir -p "$JS_DIR"
+mkdir -p "models"
+
+echo "[2/4] Preparing MediaPipe WASM runtime..."
+WASM_BASE="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm"
+WASM_FILES=(
+  "vision_wasm_internal.js"
+  "vision_wasm_internal.wasm"
+  "vision_wasm_nosimd_internal.js"
+  "vision_wasm_nosimd_internal.wasm"
+)
+for f in "${WASM_FILES[@]}"; do
+  if [ ! -f "$WASM_DIR/$f" ]; then
+    if [ -f "$NODE_MEDIAPIPE_DIR/wasm/$f" ]; then
+      echo "  ✓ $f (from node_modules)"
+      cp "$NODE_MEDIAPIPE_DIR/wasm/$f" "$WASM_DIR/$f"
+    else
+      echo "  ↓ $f"
+      curl -fLsS "$WASM_BASE/$f" -o "$WASM_DIR/$f"
+    fi
+  else
+    echo "  ✓ $f (cached)"
+  fi
+done
+
+# ---- MediaPipe JS bundle ----
+echo "[3/4] Preparing MediaPipe JS bundle..."
+if [ ! -f "$JS_DIR/vision_bundle.mjs" ]; then
+  if [ -f "$NODE_MEDIAPIPE_DIR/vision_bundle.mjs" ]; then
+    cp "$NODE_MEDIAPIPE_DIR/vision_bundle.mjs" "$JS_DIR/vision_bundle.mjs"
+    echo "  ✓ vision_bundle.mjs (from node_modules)"
+  else
+    curl -fLsS "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs" \
+      -o "$JS_DIR/vision_bundle.mjs"
+    echo "  ✓ vision_bundle.mjs"
+  fi
+else
+  echo "  ✓ vision_bundle.mjs (cached)"
+fi
+
+# ---- Pose model ----
+echo "[4/4] Downloading pose landmarker model (~4MB)..."
+MODEL_DIR="models"
+MODEL_FILE="$MODEL_DIR/pose_landmarker_lite.task"
+if [ ! -f "$MODEL_FILE" ]; then
+  curl -fLsS "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task" \
+    -o "$MODEL_FILE"
+  echo "  ✓ pose_landmarker_lite.task"
+else
+  echo "  ✓ pose_landmarker_lite.task (cached)"
+fi
+
+echo ""
+echo "========================================="
+echo "  Setup complete!"
+echo ""
+echo "  Start the coach:"
+echo "    ${PYTHON_BIN} server.py"
+echo ""
+echo "  Then open:"
+echo "    http://localhost:8420"
+echo ""
+echo "  You can now disconnect from the internet."
+echo "========================================="
