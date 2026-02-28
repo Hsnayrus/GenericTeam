@@ -705,6 +705,30 @@ class SessionRecorder {
         gate_pass: frame.gate_pass,
         confidence_avg: frame.confidence_avg,
       }));
+    const allPoseFrames = frames
+      .filter(frame => frame.live)
+      .map(frame => ({
+        timestamp_ms: frame.timestamp_ms,
+        phase: frame.live?.phase ?? frame.phase,
+        rep_count: frame.live?.rep_count ?? frame.rep_number,
+        knee_angle: frame.live?.knee_angle ?? null,
+        hip_angle: frame.live?.hip_angle ?? null,
+        torso_angle: frame.live?.torso_angle ?? null,
+        shin_angle: frame.live?.shin_angle ?? null,
+        hip_below_knee: frame.live?.hip_below_knee ?? null,
+        tempo_ms: frame.live?.tempo_ms ?? null,
+        provisional: !!frame.live?.provisional,
+        gate_pass: !!frame.gate_pass,
+        rep_mode_active: !!frame.rep_mode_active,
+        confidence_avg: frame.confidence_avg,
+        confidence_min: frame.confidence_min,
+        setup: {
+          head_visible: frame.setup?.head_visible ?? false,
+          feet_visible: frame.setup?.feet_visible ?? false,
+          centered: frame.setup?.centered ?? false,
+          side_view: frame.setup?.side_view ?? false,
+        },
+      }));
     const liveFrames = frames
       .filter(frame => frame.gate_pass && frame.rep_mode_active)
       .map(frame => ({
@@ -722,6 +746,7 @@ class SessionRecorder {
       ...this.session,
       datasets: {
         setup_coach: setupSamples,
+        live_cue_side_all: allPoseFrames,
         live_cue_side: liveFrames,
       },
     };

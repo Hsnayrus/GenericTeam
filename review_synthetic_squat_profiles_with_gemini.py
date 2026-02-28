@@ -70,6 +70,13 @@ def build_prompt(example):
         "issue": example.get("issue"),
         "profile": example.get("profile"),
         "mediaprose": example.get("mediaprose"),
+        "frames": [
+            {
+                "phase": frame.get("phase"),
+                "spec": frame.get("spec"),
+            }
+            for frame in (example.get("frames") or [])
+        ] or None,
     }
     return (
         "Review this synthetic side-view squat example using only the provided pose prose and structured metadata.\n\n"
@@ -110,6 +117,7 @@ def main():
                 "label": example.get("label"),
                 "model": args.model,
                 "video_path": example.get("video_path"),
+                "frames": example.get("frames"),
                 "mediaprose": example.get("mediaprose"),
                 "review": json.loads(text),
             }

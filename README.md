@@ -220,6 +220,7 @@ What gets saved today:
 - rep summaries
 - session metadata
 - local recorded video when the browser supports `MediaRecorder`
+- full pose stream under `datasets.live_cue_side_all`, including provisional frames, setup flags, and confidence fields for offline debugging
 
 Recommended collection setup:
 - floor-mounted camera
@@ -453,6 +454,18 @@ python3 clean_offline_session.py \
   --min-confidence 0.3
 ```
 
+### 1b. Recover reps offline from the full pose stream
+
+If the live app captured pose frames but failed to emit `rep_summaries`, derive them from the exported pose stream:
+
+```bash
+python3 derive_reps_offline.py \
+  --input /Users/you/Downloads/side-floor-session-2026-02-28T22-54-09-713Z.json \
+  --output-dir data/results/derived_reps
+```
+
+This uses `datasets.live_cue_side_all` when available and falls back to raw `frames[].live`.
+
 ### 2. Compare local models on one session
 
 ```bash
@@ -501,8 +514,44 @@ python3 review_rep_with_gemini.py \
   --session-json data/results/session.cleaned.json \
   --video data/raw_videos/session.webm \
   --rep 3 \
-  --output data/results/gemini_rep_review.json
+    --output data/results/gemini_rep_review.json
 ```
+
+### 7. Batch-review recent sessions with Gemini and local Gemma using pose only
+
+Use this when you want a fast teacher/student comparison on exported sessions without uploading the full videos:
+
+```bash
+source .venv/bin/activate
+
+python batch_pose_label_sessions.py \
+  --input-glob '/Users/you/Downloads/side-floor-session-*.json' \
+  --limit 5 \
+  --min-confidence 0.0 \
+  --gemini-models models/gemini-2.5-pro models/gemini-3.1-pro-preview \
+  --gemma-models gemma3:1b gemma3:4b \
+  --output-dir data/results/batch_pose_review
+```
+
+This writes cleaned session payloads, baseline summaries, pose-only teacher/student reviews, and per-model latency.
+
+### 8. Use Gemini vision as a separate teacher for pipeline debugging
+
+Use the video teacher only to understand what the pose pipeline missed or distorted:
+
+```bash
+source .venv/bin/activate
+
+python batch_video_vision_review.py \
+  --video-glob '/Users/you/Downloads/side-floor-session-*.webm' \
+  --json-dir /Users/you/Downloads \
+  --output-dir data/results/vision_review \
+  --model models/gemini-2.5-pro
+```
+
+Keep this output separate from the pose-teacher labels:
+- pose teacher = coaching policy labels for model training
+- vision teacher = MediaPipe / gating / framing error analysis
 
 ### Synthetic Side-View Video Generation With Google
 
@@ -530,6 +579,30 @@ python3 review_synthetic_squat_profiles_with_gemini.py \
 ```
 
 The prose-only review script sends just the structured profile plus `mediaprose` to Gemini. It does not upload the generated videos.
+
+### Synthetic Side-View Keyframe Images With Google
+
+If you mainly need pose-aligned examples, generating side-view keyframes is faster and easier to control than full video.
+
+```bash
+export GEMINI_API_KEY="YOUR_KEY_HERE"
+
+python3 generate_synthetic_squat_frames.py \
+  --count 3 \
+  --model gemini-2.5-flash-image \
+  --output-dir data/generated_frames
+```
+
+This writes one folder per squat example with standing, descending, bottom, ascending, and lockout images plus:
+- `data/generated_frames/synthetic_squat_frames_manifest.json`
+
+You can then review the generated example using only the manifest prose and frame specs:
+
+```bash
+python3 review_synthetic_squat_profiles_with_gemini.py \
+  --manifest data/generated_frames/synthetic_squat_frames_manifest.json \
+  --output data/results/synthetic_squat_frame_reviews.json
+```
 
 Equivalent `make` targets:
 
