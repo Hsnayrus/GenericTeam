@@ -13,7 +13,7 @@ echo ""
 
 # ---- Python deps ----
 echo "[1/4] Installing Python dependencies..."
-"$PYTHON_BIN" -m pip install fastapi uvicorn --quiet 2>/dev/null || "$PYTHON_BIN" -m pip install fastapi uvicorn --break-system-packages --quiet
+"$PYTHON_BIN" -m pip install -r requirements.txt --quiet 2>/dev/null || "$PYTHON_BIN" -m pip install -r requirements.txt --break-system-packages --quiet
 
 # ---- MediaPipe WASM runtime ----
 MEDIAPIPE_VERSION="0.10.32"

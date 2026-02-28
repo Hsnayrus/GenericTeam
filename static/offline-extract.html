@@ -471,6 +471,28 @@ async function processVideo() {
     gate_pass: f.gate_pass,
     confidence_avg: f.confidence_avg,
   }));
+  const allPoseDataset = frames.filter(f => f.live).map(f => ({
+    timestamp_ms: f.timestamp_ms,
+    phase: f.live.phase,
+    rep_count: f.live.rep_count,
+    knee_angle: f.live.knee_angle,
+    hip_angle: f.live.hip_angle,
+    torso_angle: f.live.torso_angle,
+    shin_angle: f.live.shin_angle,
+    hip_below_knee: f.live.hip_below_knee,
+    tempo_ms: f.live.tempo_ms,
+    provisional: !!f.live.provisional,
+    gate_pass: !!f.gate_pass,
+    rep_mode_active: !!f.rep_mode_active,
+    confidence_avg: f.confidence_avg,
+    confidence_min: f.confidence_min,
+    setup: {
+      head_visible: f.setup.head_visible,
+      feet_visible: f.setup.feet_visible,
+      centered: f.setup.centered,
+      side_view: f.setup.side_view,
+    },
+  }));
   const liveDataset = frames.filter(f => f.live).map(f => ({
     timestamp_ms: f.timestamp_ms,
     ...f.live,
@@ -490,6 +512,7 @@ async function processVideo() {
     rep_summaries: repSummaries,
     datasets: {
       setup_coach: setupDataset,
+      live_cue_side_all: allPoseDataset,
       live_cue_side: liveDataset,
     },
   };

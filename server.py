@@ -1,11 +1,12 @@
 """
 Squat Coach — Local Server
 Serves everything from disk. Zero cloud dependencies at runtime.
-
-Future: WebSocket endpoint for Gemma 2B inference.
 """
+import json
+import os
 import uvicorn
 from pathlib import Path
+from urllib import error, request
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -13,6 +14,72 @@ from fastapi.responses import FileResponse, Response
 app = FastAPI(title="Squat Coach")
 
 BASE = Path(__file__).parent
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:1b")
+DEPTH_TARGET_KNEE_DEG = float(os.environ.get("COACH_DEPTH_TARGET_KNEE_DEG", "100"))
+TORSO_WARN_DEG = float(os.environ.get("COACH_TORSO_WARN_DEG", "45"))
+VALGUS_RATIO = float(os.environ.get("COACH_VALGUS_RATIO", "0.82"))
+
+OLLAMA_SYSTEM = """You are a squat coach model running locally for realtime feedback.
+Return strict JSON only with this schema:
+{
+  "feedback": string,
+  "severity": "good|warn|bad|info",
+  "speak": boolean
+}
+Rules:
+- Give one short sentence only.
+- Prioritize torso safety, then knee tracking, then depth, then tempo, then encouragement.
+- Use the structured input only.
+- Output valid JSON only."""
+
+
+def ollama_chat(snapshot):
+    body = json.dumps(
+        {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": OLLAMA_SYSTEM},
+                {"role": "user", "content": json.dumps(snapshot)},
+            ],
+            "stream": False,
+            "format": {
+                "type": "object",
+                "properties": {
+                    "feedback": {"type": "string"},
+                    "severity": {"type": "string"},
+                    "speak": {"type": "boolean"},
+                },
+                "required": ["feedback", "severity", "speak"],
+            },
+            "options": {"temperature": 0},
+        }
+    ).encode()
+    req = request.Request(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    with request.urlopen(req, timeout=60) as response:
+        parsed = json.loads(response.read().decode())
+    return json.loads(parsed["message"]["content"])
+
+
+def fallback_feedback(snapshot):
+    phase = snapshot.get("phase", "standing")
+    torso_angle = float(snapshot.get("torso_angle") or 0)
+    knee_valgus_ratio = float(snapshot.get("knee_valgus_ratio") or 1)
+    knee_angle = float(snapshot.get("knee_angle") or 180)
+    recent_depth = snapshot.get("depth_history") or []
+    if torso_angle >= TORSO_WARN_DEG and phase != "standing":
+        return {"feedback": "Keep your chest up and reduce the forward lean.", "severity": "warn", "speak": True}
+    if knee_valgus_ratio < VALGUS_RATIO and phase in {"descending", "bottom"}:
+        return {"feedback": "Push your knees out to track over your toes.", "severity": "bad", "speak": True}
+    if phase == "bottom" and knee_angle > DEPTH_TARGET_KNEE_DEG:
+        return {"feedback": "Sit a little deeper to hit your depth target.", "severity": "warn", "speak": True}
+    if recent_depth and max(recent_depth[-3:]) > DEPTH_TARGET_KNEE_DEG + 8:
+        return {"feedback": "You are cutting depth high. Stay patient into the bottom.", "severity": "warn", "speak": True}
+    return {"feedback": "Good rep. Keep that shape.", "severity": "good", "speak": False}
 
 # ---- Serve model file with correct MIME ----
 @app.get("/models/{filename}")
@@ -61,43 +128,20 @@ async def serve_mediapipe_js(filename: str):
         }
     )
 
-# ---- WebSocket for future Gemma integration ----
+# ---- WebSocket for local Ollama integration ----
 @app.websocket("/ws/coach")
 async def coaching_ws(websocket: WebSocket):
-    """
-    Future: receives structured signal snapshots from the browser,
-    runs them through fine-tuned Gemma 2B, returns coaching decisions.
-    
-    Expected input:
-    {
-        "phase": "bottom",
-        "rep_number": 4,
-        "knee_angle": 108,
-        "hip_angle": 72,
-        "torso_angle": 41,
-        "knee_valgus_ratio": 0.79,
-        "depth_history": [94, 96, 101, 108],
-        "phase_durations_ms": {"descent": 820, "bottom": 340}
-    }
-    
-    Expected output:
-    {
-        "feedback": "...",
-        "severity": "warn",
-        "speak": true
-    }
-    """
     await websocket.accept()
     try:
         while True:
-            data = await websocket.receive_json()
-            # TODO: replace with Gemma 2B inference via MLX
-            # For now, echo back a placeholder
-            await websocket.send_json({
-                "feedback": "Gemma integration pending — using rule-based fallback",
-                "severity": "info",
-                "speak": False,
-            })
+            snapshot = await websocket.receive_json()
+            try:
+                result = ollama_chat(snapshot)
+                result["source"] = f"ollama:{OLLAMA_MODEL}"
+            except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
+                result = fallback_feedback(snapshot)
+                result["source"] = f"rules_fallback:{type(exc).__name__}"
+            await websocket.send_json(result)
     except Exception:
         pass
 
@@ -112,6 +156,6 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 if __name__ == "__main__":
     print("\n  🏋️  Squat Coach — Fully Local")
     print("  ➜  http://localhost:8420")
-    print("  ➜  All inference runs on-device")
+    print(f"  ➜  Coach model: {OLLAMA_MODEL} @ {OLLAMA_BASE_URL}")
     print("  ➜  Disconnect from internet anytime\n")
     uvicorn.run(app, host="0.0.0.0", port=8420)
