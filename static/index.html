@@ -1,2038 +1,1539 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Squat Coach — Fully Local</title>
-    <style>
-      :root {
-        --bg: #08080c;
-        --surface: rgba(255, 255, 255, 0.04);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e8e8ec;
-        --text-dim: #6b6b78;
-        --green: #00e87b;
-        --yellow: #ffd23f;
-        --red: #ff4757;
-        --cyan: #00d4ff;
-        --font-mono: "Courier New", monospace;
-        --font-body: system-ui, -apple-system, sans-serif;
-      }
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--font-body);
-        height: 100vh;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Squat Coach — Fully Local</title>
+<style>
+  :root {
+    --bg: #08080c;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --text: #e8e8ec;
+    --text-dim: #6b6b78;
+    --green: #00e87b;
+    --yellow: #ffd23f;
+    --red: #ff4757;
+    --cyan: #00d4ff;
+    --font-mono: 'Courier New', monospace;
+    --font-body: system-ui, -apple-system, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
 
-      /* Loading Screen */
-      #loading {
-        position: fixed;
-        inset: 0;
-        background: var(--bg);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-        transition: opacity 0.5s;
-      }
-      #loading.hidden {
-        opacity: 0;
-        pointer-events: none;
-      }
-      #loading h1 {
-        font-family: var(--font-mono);
-        font-size: 1.4rem;
-        font-weight: 700;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        margin-bottom: 2rem;
-        color: var(--green);
-      }
-      .loader {
-        width: 48px;
-        height: 48px;
-        border: 3px solid var(--border);
-        border-top-color: var(--green);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      #load-status {
-        margin-top: 1.5rem;
-        font-family: var(--font-mono);
-        font-size: 0.75rem;
-        color: var(--text-dim);
-        letter-spacing: 0.05em;
-      }
+  /* Loading Screen */
+  #loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.5s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading h1 {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 2rem;
+    color: var(--green);
+  }
+  .loader {
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #load-status {
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
 
-      /* Start Screen */
-      #start-screen {
-        position: fixed;
-        inset: 0;
-        background: rgba(8, 8, 12, 0.92);
-        backdrop-filter: blur(20px);
-        display: none;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 900;
-      }
-      #start-screen.visible {
-        display: flex;
-      }
-      #start-btn {
-        background: var(--green);
-        color: #000;
-        border: none;
-        padding: 1rem 3rem;
-        font-family: var(--font-mono);
-        font-size: 1rem;
-        font-weight: 700;
-        letter-spacing: 0.15em;
-        text-transform: uppercase;
-        cursor: pointer;
-        border-radius: 4px;
-        transition: all 0.2s;
-      }
-      #start-btn:hover {
-        transform: scale(1.05);
-        box-shadow: 0 0 30px rgba(0, 232, 123, 0.3);
-      }
-      .start-subtitle {
-        font-size: 0.8rem;
-        color: var(--text-dim);
-        margin-top: 1rem;
-        font-family: var(--font-mono);
-        letter-spacing: 0.05em;
-      }
-      .start-badges {
-        display: flex;
-        gap: 12px;
-        margin-top: 1.5rem;
-      }
-      .badge {
-        font-family: var(--font-mono);
-        font-size: 0.6rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        padding: 4px 12px;
-        border-radius: 3px;
-        border: 1px solid var(--border);
-        color: var(--text-dim);
-      }
-      .badge.local {
-        color: var(--green);
-        border-color: rgba(0, 232, 123, 0.3);
-      }
-      .badge.offline {
-        color: var(--cyan);
-        border-color: rgba(0, 212, 255, 0.3);
-      }
+  /* Start Screen */
+  #start-screen {
+    position: fixed; inset: 0;
+    background: rgba(8,8,12,0.92);
+    backdrop-filter: blur(20px);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 900;
+  }
+  #start-screen.visible { display: flex; }
+  #start-btn {
+    background: var(--green);
+    color: #000;
+    border: none;
+    padding: 1rem 3rem;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  #start-btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,232,123,0.3); }
+  .start-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-top: 1rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.05em;
+  }
+  .start-badges {
+    display: flex; gap: 12px;
+    margin-top: 1.5rem;
+  }
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .badge.local { color: var(--green); border-color: rgba(0,232,123,0.3); }
+  .badge.offline { color: var(--cyan); border-color: rgba(0,212,255,0.3); }
 
-      /* Main Layout */
-      #main {
-        display: none;
-        flex: 1;
-        position: relative;
-      }
-      #main.active {
-        display: flex;
-      }
+  /* Main Layout */
+  #main { display: none; flex: 1; position: relative; }
+  #main.active { display: flex; }
 
-      /* Video Container */
-      #video-container {
-        position: relative;
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        background: #000;
-      }
-      #video {
-        position: absolute;
-        transform: scaleX(-1);
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-      }
-      #overlay {
-        position: absolute;
-        transform: scaleX(-1);
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-      }
+  /* Video Container */
+  #video-container {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #000;
+  }
+  #video {
+    position: absolute;
+    transform: scaleX(-1);
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  #overlay {
+    position: absolute;
+    transform: scaleX(-1);
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
 
-      /* HUD Panels */
-      .hud-panel {
-        position: absolute;
-        background: rgba(8, 8, 12, 0.82);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 12px 16px;
-        z-index: 10;
-      }
+  /* HUD Panels */
+  .hud-panel {
+    position: absolute;
+    background: rgba(8,8,12,0.82);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    z-index: 10;
+  }
 
-      /* Stats (top-left) */
-      #stats-panel {
-        top: 16px;
-        left: 16px;
-      }
-      .stat-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-family: var(--font-mono);
-        font-size: 0.7rem;
-        margin-bottom: 4px;
-        letter-spacing: 0.03em;
-      }
-      .stat-row:last-child {
-        margin-bottom: 0;
-      }
-      .stat-label {
-        color: var(--text-dim);
-        min-width: 64px;
-      }
-      .stat-value {
-        color: var(--text);
-        font-weight: 600;
-      }
-      .stat-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--green);
-        flex-shrink: 0;
-      }
-      .stat-dot.warn {
-        background: var(--yellow);
-      }
-      .stat-dot.bad {
-        background: var(--red);
-      }
+  /* Stats (top-left) */
+  #stats-panel { top: 16px; left: 16px; }
+  .stat-row {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono); font-size: 0.7rem;
+    margin-bottom: 4px; letter-spacing: 0.03em;
+  }
+  .stat-row:last-child { margin-bottom: 0; }
+  .stat-label { color: var(--text-dim); min-width: 64px; }
+  .stat-value { color: var(--text); font-weight: 600; }
+  .stat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .stat-dot.warn { background: var(--yellow); }
+  .stat-dot.bad { background: var(--red); }
 
-      /* Network indicator */
-      #net-row .stat-value.offline-ok {
-        color: var(--green);
-      }
-      #net-row .stat-value.online {
-        color: var(--text-dim);
-      }
+  /* Network indicator */
+  #net-row .stat-value.offline-ok { color: var(--green); }
+  #net-row .stat-value.online { color: var(--text-dim); }
 
-      /* Angles (top-right) */
-      #angles-panel {
-        top: 16px;
-        right: 16px;
-        min-width: 160px;
-      }
-      .angle-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-family: var(--font-mono);
-        font-size: 0.72rem;
-        margin-bottom: 6px;
-        letter-spacing: 0.03em;
-      }
-      .angle-row:last-child {
-        margin-bottom: 0;
-      }
-      .angle-label {
-        color: var(--text-dim);
-      }
-      .angle-value {
-        font-weight: 700;
-        font-size: 0.85rem;
-      }
+  /* Angles (top-right) */
+  #angles-panel { top: 16px; right: 16px; min-width: 160px; }
+  .angle-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--font-mono); font-size: 0.72rem;
+    margin-bottom: 6px; letter-spacing: 0.03em;
+  }
+  .angle-row:last-child { margin-bottom: 0; }
+  .angle-label { color: var(--text-dim); }
+  .angle-value { font-weight: 700; font-size: 0.85rem; }
 
-      /* Phase (left center) */
-      #phase-panel {
-        top: 50%;
-        left: 16px;
-        transform: translateY(-50%);
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 14px 16px;
-      }
-      .phase-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-family: var(--font-mono);
-        font-size: 0.68rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--text-dim);
-        padding: 6px 0;
-        transition: all 0.3s;
-      }
-      .phase-item.active {
-        color: var(--cyan);
-      }
-      .phase-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        border: 1.5px solid var(--text-dim);
-        transition: all 0.3s;
-        flex-shrink: 0;
-      }
-      .phase-item.active .phase-dot {
-        background: var(--cyan);
-        border-color: var(--cyan);
-        box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
-      }
-      .phase-connector {
-        width: 1.5px;
-        height: 10px;
-        background: var(--border);
-        margin-left: 3.25px;
-      }
+  /* Phase (left center) */
+  #phase-panel {
+    top: 50%; left: 16px; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 2px; padding: 14px 16px;
+  }
+  .phase-item {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono); font-size: 0.68rem;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-dim); padding: 6px 0; transition: all 0.3s;
+  }
+  .phase-item.active { color: var(--cyan); }
+  .phase-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    border: 1.5px solid var(--text-dim); transition: all 0.3s; flex-shrink: 0;
+  }
+  .phase-item.active .phase-dot {
+    background: var(--cyan); border-color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0,212,255,0.5);
+  }
+  .phase-connector { width: 1.5px; height: 10px; background: var(--border); margin-left: 3.25px; }
 
-      /* Rep counter (bottom-right) */
-      #rep-panel {
-        bottom: 16px;
-        right: 16px;
-        text-align: center;
-        min-width: 100px;
-      }
-      #rep-count {
-        font-family: var(--font-mono);
-        font-size: 2.8rem;
-        font-weight: 700;
-        color: var(--green);
-        line-height: 1;
-      }
-      #rep-label {
-        font-family: var(--font-mono);
-        font-size: 0.6rem;
-        color: var(--text-dim);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        margin-top: 4px;
-      }
+  /* Rep counter (bottom-right) */
+  #rep-panel { bottom: 16px; right: 16px; text-align: center; min-width: 100px; }
+  #rep-count {
+    font-family: var(--font-mono); font-size: 2.8rem;
+    font-weight: 700; color: var(--green); line-height: 1;
+  }
+  #rep-label {
+    font-family: var(--font-mono); font-size: 0.6rem;
+    color: var(--text-dim); letter-spacing: 0.2em;
+    text-transform: uppercase; margin-top: 4px;
+  }
 
-      /* Feedback (bottom-center) */
-      #feedback-panel {
-        bottom: 16px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        align-items: center;
-        max-width: 400px;
-        padding: 0;
-        background: none;
-        border: none;
-        backdrop-filter: none;
-      }
-      .feedback-msg {
-        background: rgba(8, 8, 12, 0.88);
-        backdrop-filter: blur(12px);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 8px 20px;
-        font-family: var(--font-mono);
-        font-size: 0.78rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
-        animation: feedIn 0.3s ease-out;
-        text-align: center;
-        white-space: nowrap;
-      }
-      .feedback-msg.good {
-        color: var(--green);
-        border-color: rgba(0, 232, 123, 0.25);
-        background: rgba(0, 232, 123, 0.08);
-      }
-      .feedback-msg.warn {
-        color: var(--yellow);
-        border-color: rgba(255, 210, 63, 0.25);
-        background: rgba(255, 210, 63, 0.08);
-      }
-      .feedback-msg.bad {
-        color: var(--red);
-        border-color: rgba(255, 71, 87, 0.25);
-        background: rgba(255, 71, 87, 0.08);
-      }
-      .feedback-msg.info {
-        color: var(--cyan);
-        border-color: rgba(0, 212, 255, 0.25);
-        background: rgba(0, 212, 255, 0.08);
-      }
-      @keyframes feedIn {
-        from {
-          opacity: 0;
-          transform: translateY(8px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
+  /* Feedback (bottom-center) */
+  #feedback-panel {
+    bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center; max-width: 400px;
+    padding: 0; background: none; border: none; backdrop-filter: none;
+  }
+  .feedback-msg {
+    background: rgba(8,8,12,0.88);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.04em;
+    animation: feedIn 0.3s ease-out;
+    text-align: center; white-space: nowrap;
+  }
+  .feedback-msg.good { color: var(--green); border-color: rgba(0,232,123,0.25); background: rgba(0,232,123,0.08); }
+  .feedback-msg.warn { color: var(--yellow); border-color: rgba(255,210,63,0.25); background: rgba(255,210,63,0.08); }
+  .feedback-msg.bad { color: var(--red); border-color: rgba(255,71,87,0.25); background: rgba(255,71,87,0.08); }
+  .feedback-msg.info { color: var(--cyan); border-color: rgba(0,212,255,0.25); background: rgba(0,212,255,0.08); }
+  @keyframes feedIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-      /* Setup gate */
-      #setup-panel {
-        top: 50%;
-        right: 16px;
-        transform: translateY(-50%);
-        width: 280px;
-      }
-      #setup-panel.hidden {
-        display: none;
-      }
-      .panel-title {
-        font-family: var(--font-mono);
-        font-size: 0.62rem;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--text-dim);
-        margin-bottom: 10px;
-      }
-      .setup-status {
-        font-family: var(--font-mono);
-        font-size: 0.7rem;
-        color: var(--cyan);
-        margin-bottom: 10px;
-      }
-      .setup-instruction {
-        font-family: var(--font-mono);
-        font-size: 0.72rem;
-        line-height: 1.5;
-        color: var(--text);
-        margin-bottom: 12px;
-      }
-      .setup-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 12px;
-      }
-      .setup-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        font-family: var(--font-mono);
-        font-size: 0.66rem;
-        letter-spacing: 0.05em;
-      }
-      .setup-item-label {
-        color: var(--text-dim);
-      }
-      .setup-item-state {
-        color: var(--red);
-        text-transform: uppercase;
-      }
-      .setup-item.pass .setup-item-state {
-        color: var(--green);
-      }
-      .setup-item.warn .setup-item-state {
-        color: var(--yellow);
-      }
-      #setup-start-btn {
-        width: 100%;
-        background: var(--green);
-        color: #000;
-        border: none;
-        border-radius: 4px;
-        padding: 10px 12px;
-        font-family: var(--font-mono);
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        cursor: pointer;
-      }
-      #setup-start-btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      .setup-divider {
-        height: 1px;
-        background: var(--border);
-        margin: 12px 0;
-      }
-      .setup-controls {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-top: 8px;
-      }
-      .setup-btn {
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 8px 10px;
-        font-family: var(--font-mono);
-        font-size: 0.62rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        cursor: pointer;
-      }
-      .setup-btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-      .setup-select {
-        width: 100%;
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        padding: 7px 8px;
-        font-family: var(--font-mono);
-        font-size: 0.62rem;
-      }
-      .setup-metric {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        font-family: var(--font-mono);
-        font-size: 0.62rem;
-        margin-top: 6px;
-      }
-      .setup-metric span:first-child {
-        color: var(--text-dim);
-      }
+  /* Setup gate */
+  #setup-panel {
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    width: 280px;
+  }
+  #setup-panel.hidden { display: none; }
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .setup-status {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--cyan);
+    margin-bottom: 10px;
+  }
+  .setup-instruction {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+  .setup-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .setup-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.05em;
+  }
+  .setup-item-label { color: var(--text-dim); }
+  .setup-item-state { color: var(--red); text-transform: uppercase; }
+  .setup-item.pass .setup-item-state { color: var(--green); }
+  .setup-item.warn .setup-item-state { color: var(--yellow); }
+  .setup-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 0;
+  }
+  .setup-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .setup-btn {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+  .setup-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .setup-select {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 8px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+  }
+  .setup-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    margin-top: 6px;
+  }
+  .setup-metric span:first-child { color: var(--text-dim); }
 
-      /* Gemma status (bottom-left) */
-      #model-panel {
-        bottom: 16px;
-        left: 16px;
-        font-family: var(--font-mono);
-        font-size: 0.55rem;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        opacity: 0.8;
-      }
-      #model-panel .model-line {
-        margin-bottom: 3px;
-        color: var(--text-dim);
-      }
-      #model-panel .model-line span.active {
-        color: var(--green);
-      }
-      #model-panel .model-line span.pending {
-        color: var(--yellow);
-      }
+  /* Gemma status (bottom-left) */
+  #model-panel {
+    bottom: 16px; left: 16px;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+  #model-panel .model-line {
+    margin-bottom: 3px;
+    color: var(--text-dim);
+  }
+  #model-panel .model-line span.active { color: var(--green); }
+  #model-panel .model-line span.pending { color: var(--yellow); }
 
-      /* Error overlay */
-      #error-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(8, 8, 12, 0.95);
-        display: none;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
-        text-align: center;
-        padding: 2rem;
-      }
-      #error-overlay.visible {
-        display: flex;
-      }
-      #error-overlay h2 {
-        font-family: var(--font-mono);
-        color: var(--red);
-        margin-bottom: 1rem;
-        font-size: 1.1rem;
-        letter-spacing: 0.1em;
-      }
-      #error-overlay p {
-        font-size: 0.85rem;
-        color: var(--text-dim);
-        max-width: 400px;
-        line-height: 1.6;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="loading">
-      <h1>Squat Coach</h1>
-      <div class="loader"></div>
-      <div id="load-status">Loading pose model from disk...</div>
-    </div>
+  /* Error overlay */
+  #error-overlay {
+    position: fixed; inset: 0;
+    background: rgba(8,8,12,0.95);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 2000; text-align: center; padding: 2rem;
+  }
+  #error-overlay.visible { display: flex; }
+  #error-overlay h2 {
+    font-family: var(--font-mono);
+    color: var(--red); margin-bottom: 1rem;
+    font-size: 1.1rem; letter-spacing: 0.1em;
+  }
+  #error-overlay p { font-size: 0.85rem; color: var(--text-dim); max-width: 400px; line-height: 1.6; }
+</style>
+</head>
+<body>
 
-    <div id="start-screen">
-      <button id="start-btn">Start Coaching</button>
-      <div class="start-subtitle">
-        Pose model loaded · all inference on-device
+<div id="loading">
+  <h1>Squat Coach</h1>
+  <div class="loader"></div>
+  <div id="load-status">Loading pose model from disk...</div>
+</div>
+
+<div id="start-screen">
+  <button id="start-btn">Start Coaching</button>
+  <div class="start-subtitle">Pose model loaded · all inference on-device</div>
+  <div class="start-badges">
+    <span class="badge local">100% Local</span>
+    <span class="badge offline">Works Offline</span>
+    <span class="badge">MediaPipe WASM</span>
+  </div>
+</div>
+
+<div id="error-overlay">
+  <h2>Camera Error</h2>
+  <p id="error-msg">Could not access webcam.</p>
+</div>
+
+<div id="main">
+  <div id="video-container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="stats-panel" class="hud-panel">
+      <div class="stat-row">
+        <div class="stat-dot" id="dot-fps"></div>
+        <span class="stat-label">FPS</span>
+        <span class="stat-value" id="val-fps">—</span>
       </div>
-      <div class="start-badges">
-        <span class="badge local">100% Local</span>
-        <span class="badge offline">Works Offline</span>
-        <span class="badge">MediaPipe WASM</span>
+      <div class="stat-row">
+        <div class="stat-dot" id="dot-conf"></div>
+        <span class="stat-label">CONF</span>
+        <span class="stat-value" id="val-conf">—</span>
+      </div>
+      <div class="stat-row">
+        <div class="stat-dot" id="dot-gate"></div>
+        <span class="stat-label">GATE</span>
+        <span class="stat-value" id="val-gate">—</span>
+      </div>
+      <div class="stat-row" id="net-row">
+        <div class="stat-dot" id="dot-net"></div>
+        <span class="stat-label">NET</span>
+        <span class="stat-value" id="val-net">—</span>
       </div>
     </div>
 
-    <div id="error-overlay">
-      <h2>Camera Error</h2>
-      <p id="error-msg">Could not access webcam.</p>
-    </div>
-
-    <div id="main">
-      <div id="video-container">
-        <video id="video" autoplay playsinline></video>
-        <canvas id="overlay"></canvas>
-
-        <div id="stats-panel" class="hud-panel">
-          <div class="stat-row">
-            <div class="stat-dot" id="dot-fps"></div>
-            <span class="stat-label">FPS</span>
-            <span class="stat-value" id="val-fps">—</span>
-          </div>
-          <div class="stat-row">
-            <div class="stat-dot" id="dot-conf"></div>
-            <span class="stat-label">CONF</span>
-            <span class="stat-value" id="val-conf">—</span>
-          </div>
-          <div class="stat-row">
-            <div class="stat-dot" id="dot-gate"></div>
-            <span class="stat-label">GATE</span>
-            <span class="stat-value" id="val-gate">—</span>
-          </div>
-          <div class="stat-row" id="net-row">
-            <div class="stat-dot" id="dot-net"></div>
-            <span class="stat-label">NET</span>
-            <span class="stat-value" id="val-net">—</span>
-          </div>
-        </div>
-
-        <div id="angles-panel" class="hud-panel">
-          <div class="angle-row">
-            <span class="angle-label">KNEE</span>
-            <span class="angle-value" id="val-knee">—°</span>
-          </div>
-          <div class="angle-row">
-            <span class="angle-label">HIP</span>
-            <span class="angle-value" id="val-hip">—°</span>
-          </div>
-          <div class="angle-row">
-            <span class="angle-label">TORSO</span>
-            <span class="angle-value" id="val-torso">—°</span>
-          </div>
-        </div>
-
-        <div id="phase-panel" class="hud-panel">
-          <div class="phase-item" id="phase-standing" data-phase="standing">
-            <div class="phase-dot"></div>
-            <span>Standing</span>
-          </div>
-          <div class="phase-connector"></div>
-          <div class="phase-item" id="phase-descending" data-phase="descending">
-            <div class="phase-dot"></div>
-            <span>Descent</span>
-          </div>
-          <div class="phase-connector"></div>
-          <div class="phase-item" id="phase-bottom" data-phase="bottom">
-            <div class="phase-dot"></div>
-            <span>Bottom</span>
-          </div>
-          <div class="phase-connector"></div>
-          <div class="phase-item" id="phase-ascending" data-phase="ascending">
-            <div class="phase-dot"></div>
-            <span>Ascent</span>
-          </div>
-        </div>
-
-        <div id="rep-panel" class="hud-panel">
-          <div id="rep-count">0</div>
-          <div id="rep-label">REPS</div>
-        </div>
-
-        <div id="setup-panel" class="hud-panel">
-          <div class="panel-title">Setup Gate</div>
-          <div class="setup-status" id="setup-status">Checking framing...</div>
-          <div class="setup-instruction" id="setup-instruction">
-            Stand in frame with your head and ankles visible.
-          </div>
-          <div class="setup-list">
-            <div class="setup-item" id="setup-head">
-              <span class="setup-item-label">Head visible</span
-              ><span class="setup-item-state">FAIL</span>
-            </div>
-            <div class="setup-item" id="setup-feet">
-              <span class="setup-item-label">Feet visible</span
-              ><span class="setup-item-state">FAIL</span>
-            </div>
-            <div class="setup-item" id="setup-distance">
-              <span class="setup-item-label">Distance</span
-              ><span class="setup-item-state">CHECK</span>
-            </div>
-            <div class="setup-item" id="setup-center">
-              <span class="setup-item-label">Centered</span
-              ><span class="setup-item-state">CHECK</span>
-            </div>
-            <div class="setup-item" id="setup-view">
-              <span class="setup-item-label">Side view</span
-              ><span class="setup-item-state">CHECK</span>
-            </div>
-          </div>
-          <button id="setup-start-btn" disabled>Begin Set</button>
-          <div class="setup-divider"></div>
-          <div class="setup-status" id="record-status">Recorder idle</div>
-          <div class="setup-list">
-            <div class="setup-item">
-              <span class="setup-item-label">Camera angle</span
-              ><span
-                ><select id="record-angle" class="setup-select">
-                  <option>0deg</option>
-                  <option>22.5deg</option>
-                  <option selected>45deg</option>
-                  <option>67.5deg</option>
-                  <option>90deg</option>
-                </select></span
-              >
-            </div>
-            <div class="setup-item">
-              <span class="setup-item-label">Height</span
-              ><span
-                ><select id="record-height" class="setup-select">
-                  <option>floor</option>
-                  <option selected>hip</option>
-                  <option>chest</option>
-                </select></span
-              >
-            </div>
-          </div>
-          <div class="setup-controls">
-            <button id="record-start-btn" class="setup-btn">Start Rec</button>
-            <button id="record-stop-btn" class="setup-btn" disabled>
-              Stop Rec
-            </button>
-            <button id="record-export-btn" class="setup-btn" disabled>
-              Export JSON
-            </button>
-            <button id="record-reset-btn" class="setup-btn">Reset</button>
-          </div>
-          <div class="setup-metric">
-            <span>Frames</span><span id="record-frames">0</span>
-          </div>
-          <div class="setup-metric">
-            <span>Reps</span><span id="record-reps">0</span>
-          </div>
-          <div class="setup-metric">
-            <span>Gate pass</span><span id="record-gate-pass">—</span>
-          </div>
-        </div>
-
-        <div id="feedback-panel"></div>
-
-        <div id="model-panel" class="hud-panel">
-          <div class="model-line">
-            POSE <span class="active">● MediaPipe Lite</span>
-          </div>
-          <div class="model-line">
-            SMOOTH <span class="active">● EMA α=0.7</span>
-          </div>
-          <div class="model-line">
-            COACH
-            <span class="pending" id="coach-model-status"
-              >○ Gemma 2B (connect)</span
-            >
-          </div>
-        </div>
+    <div id="angles-panel" class="hud-panel">
+      <div class="angle-row">
+        <span class="angle-label">KNEE</span>
+        <span class="angle-value" id="val-knee">—°</span>
+      </div>
+      <div class="angle-row">
+        <span class="angle-label">HIP</span>
+        <span class="angle-value" id="val-hip">—°</span>
+      </div>
+      <div class="angle-row">
+        <span class="angle-label">TORSO</span>
+        <span class="angle-value" id="val-torso">—°</span>
       </div>
     </div>
 
-    <script type="module">
-      // ============================================================
-      // LOCAL IMPORTS — no CDN, everything from disk via local server
-      // ============================================================
-      import {
-        PoseLandmarker,
-        FilesetResolver,
-      } from "/mediapipe/vision_bundle.mjs";
-
-      // ============================================================
-      // CONFIG
-      // ============================================================
-      const CONFIG = {
-        confidenceThreshold: 0.5,
-        emaAlpha: 0.7,
-        standingAngle: 155,
-        bottomAngle: 110,
-        angleVelocityThreshold: 1.5,
-        depthAngle: 100,
-        torsoLeanAngle: 45,
-        valgusRatio: 0.82,
-        decisionPersistMs: 250,
-        feedbackCooldownMs: 2000,
-        audioCooldownMs: 3000,
-        // Gemma integration
-        gemmaEnabled: false,
-        gemmaAutoConnect: false,
-        gemmaCallOnPhaseChange: true,
-        gemmaCallIntervalMs: 2000,
-        setupReadyMs: 1500,
-        minBodyFill: 0.55,
-        maxBodyFill: 0.9,
-        maxCenterOffset: 0.1,
-        sideViewSpreadMax: 0.18,
-      };
-
-      const LM = {
-        LEFT_SHOULDER: 11,
-        RIGHT_SHOULDER: 12,
-        LEFT_HIP: 23,
-        RIGHT_HIP: 24,
-        LEFT_KNEE: 25,
-        RIGHT_KNEE: 26,
-        LEFT_ANKLE: 27,
-        RIGHT_ANKLE: 28,
-      };
-
-      const SKELETON_CONNECTIONS = [
-        [11, 12],
-        [11, 23],
-        [12, 24],
-        [23, 24],
-        [23, 25],
-        [25, 27],
-        [24, 26],
-        [26, 28],
-        [11, 13],
-        [13, 15],
-        [12, 14],
-        [14, 16],
-      ];
-
-      // ============================================================
-      // UTILITY CLASSES
-      // ============================================================
-
-      class LandmarkSmoother {
-        constructor(alpha) {
-          this.alpha = alpha;
-          this.prev = null;
-        }
-        update(landmarks) {
-          if (!this.prev) {
-            this.prev = landmarks.map((l) => ({ ...l }));
-            return landmarks;
-          }
-          const s = landmarks.map((l, i) => ({
-            x: this.alpha * l.x + (1 - this.alpha) * this.prev[i].x,
-            y: this.alpha * l.y + (1 - this.alpha) * this.prev[i].y,
-            z: this.alpha * l.z + (1 - this.alpha) * this.prev[i].z,
-            visibility: l.visibility,
-          }));
-          this.prev = s.map((l) => ({ ...l }));
-          return s;
-        }
-      }
-
-      class DecisionGate {
-        constructor(persistMs) {
-          this.persistMs = persistMs;
-          this.issues = new Map();
-        }
-        update(id, detected) {
-          const now = performance.now();
-          if (detected) {
-            if (!this.issues.has(id))
-              this.issues.set(id, { start: now, confirmed: false });
-            else {
-              const e = this.issues.get(id);
-              if (!e.confirmed && now - e.start >= this.persistMs)
-                e.confirmed = true;
-            }
-          } else {
-            this.issues.delete(id);
-          }
-        }
-        isConfirmed(id) {
-          return this.issues.get(id)?.confirmed ?? false;
-        }
-      }
-
-      class SessionRecorder {
-        constructor() {
-          this.reset();
-        }
-
-        start(meta) {
-          this.active = true;
-          this.session = {
-            schema_version: "squat_state_v1",
-            session_id: `session-${new Date().toISOString().replace(/[:.]/g, "-")}`,
-            created_at: new Date().toISOString(),
-            camera_angle: meta.cameraAngle,
-            camera_height: meta.cameraHeight,
-            frames: [],
-            rep_summaries: [],
-          };
-        }
-
-        stop() {
-          this.active = false;
-        }
-
-        reset() {
-          this.active = false;
-          this.session = null;
-        }
-
-        record(frame) {
-          if (!this.active || !this.session) return;
-          this.session.frames.push(frame);
-        }
-
-        addRepSummary(summary) {
-          if (!this.session) return;
-          this.session.rep_summaries.push(summary);
-        }
-
-        getMetrics() {
-          if (!this.session) return { frames: 0, reps: 0, gatePassRate: null };
-          const frames = this.session.frames.length;
-          const gatePass = this.session.frames.filter(
-            (frame) => frame.gate_pass,
-          ).length;
-          return {
-            frames,
-            reps: this.session.rep_summaries.length,
-            gatePassRate: frames ? gatePass / frames : null,
-          };
-        }
-
-        export() {
-          if (!this.session || !this.session.frames.length) return false;
-          const blob = new Blob([JSON.stringify(this.session, null, 2)], {
-            type: "application/json",
-          });
-          const url = URL.createObjectURL(blob);
-          const anchor = document.createElement("a");
-          anchor.href = url;
-          anchor.download = `${this.session.camera_angle}-${this.session.camera_height}-${this.session.session_id}.json`;
-          document.body.appendChild(anchor);
-          anchor.click();
-          anchor.remove();
-          URL.revokeObjectURL(url);
-          return true;
-        }
-      }
-
-      class SetupGate {
-        constructor() {
-          this.readySince = null;
-          this.locked = true;
-        }
-
-        evaluate(landmarks, frameWidth, frameHeight) {
-          const head = landmarks[0];
-          const leftAnkle = landmarks[LM.LEFT_ANKLE];
-          const rightAnkle = landmarks[LM.RIGHT_ANKLE];
-          const shoulderMidX =
-            (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) /
-            2;
-          const hipMidX =
-            (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2;
-          const visible = [
-            head,
-            landmarks[LM.LEFT_SHOULDER],
-            landmarks[LM.RIGHT_SHOULDER],
-            landmarks[LM.LEFT_HIP],
-            landmarks[LM.RIGHT_HIP],
-            landmarks[LM.LEFT_KNEE],
-            landmarks[LM.RIGHT_KNEE],
-            leftAnkle,
-            rightAnkle,
-          ]
-            .filter(Boolean)
-            .filter((point) => point.visibility >= CONFIG.confidenceThreshold);
-
-          const bbox = visible.length
-            ? {
-                minX: Math.min(...visible.map((point) => point.x)),
-                maxX: Math.max(...visible.map((point) => point.x)),
-                minY: Math.min(...visible.map((point) => point.y)),
-                maxY: Math.max(...visible.map((point) => point.y)),
-              }
-            : null;
-
-          const bodyFill = bbox ? bbox.maxY - bbox.minY : 0;
-          const centerX = bbox ? (bbox.minX + bbox.maxX) / 2 : 0.5;
-          const centerOffset = Math.abs(centerX - 0.5);
-          const sideSpread =
-            Math.abs(shoulderMidX - hipMidX) +
-            Math.abs(
-              landmarks[LM.LEFT_SHOULDER].x - landmarks[LM.RIGHT_SHOULDER].x,
-            ) *
-              0.5;
-
-          const checks = {
-            head: !!head && head.visibility >= CONFIG.confidenceThreshold,
-            feet:
-              !!leftAnkle &&
-              !!rightAnkle &&
-              leftAnkle.visibility >= CONFIG.confidenceThreshold &&
-              rightAnkle.visibility >= CONFIG.confidenceThreshold,
-            distance:
-              bodyFill >= CONFIG.minBodyFill && bodyFill <= CONFIG.maxBodyFill,
-            center: centerOffset <= CONFIG.maxCenterOffset,
-            view: sideSpread <= CONFIG.sideViewSpreadMax,
-          };
-
-          const orderedFailures = [
-            !checks.head &&
-              "Tilt camera up or step back so your head is visible.",
-            !checks.feet &&
-              "Step back or tilt the camera down so both feet are visible.",
-            !checks.distance &&
-              (bodyFill > CONFIG.maxBodyFill
-                ? "You are too close. Step back."
-                : "You are too far. Step closer."),
-            !checks.center &&
-              (centerX < 0.5
-                ? "Move slightly to your right."
-                : "Move slightly to your left."),
-            !checks.view && "Rotate into a clearer side view.",
-          ].filter(Boolean);
-
-          return {
-            checks,
-            instruction:
-              orderedFailures[0] || "Framing looks good. Hold steady.",
-            bodyFill,
-            centerOffset,
-            sideSpread,
-          };
-        }
-
-        update(analysis, now) {
-          const allGood = Object.values(analysis.checks).every(Boolean);
-          if (allGood) {
-            if (this.readySince == null) this.readySince = now;
-            if (now - this.readySince >= CONFIG.setupReadyMs)
-              this.locked = false;
-          } else {
-            this.readySince = null;
-            this.locked = true;
-          }
-          return {
-            locked: this.locked,
-            readyMs:
-              this.readySince == null
-                ? 0
-                : clamp(now - this.readySince, 0, CONFIG.setupReadyMs),
-          };
-        }
-
-        unlock() {
-          this.locked = false;
-        }
-      }
-
-      // ============================================================
-      // ANGLE COMPUTATION
-      // ============================================================
-
-      function computeAngle(a, b, c) {
-        const ba = { x: a.x - b.x, y: a.y - b.y };
-        const bc = { x: c.x - b.x, y: c.y - b.y };
-        const dot = ba.x * bc.x + ba.y * bc.y;
-        const magBA = Math.sqrt(ba.x ** 2 + ba.y ** 2);
-        const magBC = Math.sqrt(bc.x ** 2 + bc.y ** 2);
-        if (magBA === 0 || magBC === 0) return 180;
-        return (
-          Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))) *
-          (180 / Math.PI)
-        );
-      }
-
-      function computeTorsoAngle(shoulder, hip) {
-        const dx = shoulder.x - hip.x;
-        const dy = shoulder.y - hip.y;
-        return Math.abs(Math.atan2(Math.abs(dx), -dy) * (180 / Math.PI));
-      }
-
-      function computeSegmentAngle(a, b) {
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        return Math.abs(Math.atan2(Math.abs(dx), Math.abs(dy)) * (180 / Math.PI));
-      }
-
-      function hasPoint(point) {
-        return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
-      }
-
-      function computeLiveMetrics(landmarks, phase, repCount, now, phaseStartTime) {
-        const required = [
-          landmarks[LM.LEFT_SHOULDER],
-          landmarks[LM.RIGHT_SHOULDER],
-          landmarks[LM.LEFT_HIP],
-          landmarks[LM.RIGHT_HIP],
-          landmarks[LM.LEFT_KNEE],
-          landmarks[LM.RIGHT_KNEE],
-          landmarks[LM.LEFT_ANKLE],
-          landmarks[LM.RIGHT_ANKLE],
-        ];
-        if (!required.every(hasPoint)) return null;
-
-        const lKnee = computeAngle(
-          landmarks[LM.LEFT_HIP],
-          landmarks[LM.LEFT_KNEE],
-          landmarks[LM.LEFT_ANKLE],
-        );
-        const rKnee = computeAngle(
-          landmarks[LM.RIGHT_HIP],
-          landmarks[LM.RIGHT_KNEE],
-          landmarks[LM.RIGHT_ANKLE],
-        );
-        const kneeAngle = (lKnee + rKnee) / 2;
-        const lHip = computeAngle(
-          landmarks[LM.LEFT_SHOULDER],
-          landmarks[LM.LEFT_HIP],
-          landmarks[LM.LEFT_KNEE],
-        );
-        const rHip = computeAngle(
-          landmarks[LM.RIGHT_SHOULDER],
-          landmarks[LM.RIGHT_HIP],
-          landmarks[LM.RIGHT_KNEE],
-        );
-        const hipAngle = (lHip + rHip) / 2;
-        const midS = {
-          x:
-            (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) /
-            2,
-          y:
-            (landmarks[LM.LEFT_SHOULDER].y + landmarks[LM.RIGHT_SHOULDER].y) /
-            2,
-        };
-        const midH = {
-          x: (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2,
-          y: (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2,
-        };
-        const torsoAngle = computeTorsoAngle(midS, midH);
-        const leftShinAngle = computeSegmentAngle(
-          landmarks[LM.LEFT_KNEE],
-          landmarks[LM.LEFT_ANKLE],
-        );
-        const rightShinAngle = computeSegmentAngle(
-          landmarks[LM.RIGHT_KNEE],
-          landmarks[LM.RIGHT_ANKLE],
-        );
-        const shinAngle = (leftShinAngle + rightShinAngle) / 2;
-        const kneeMidY =
-          (landmarks[LM.LEFT_KNEE].y + landmarks[LM.RIGHT_KNEE].y) / 2;
-        const hipMidY = (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2;
-        const hipBelowKnee = hipMidY > kneeMidY;
-        return {
-          lKnee,
-          rKnee,
-          kneeAngle,
-          lHip,
-          rHip,
-          hipAngle,
-          torsoAngle,
-          shinAngle,
-          hipBelowKnee,
-          live: {
-            phase,
-            rep_number: repCount,
-            knee_angle: Number(kneeAngle.toFixed(2)),
-            hip_angle: Number(hipAngle.toFixed(2)),
-            torso_angle: Number(torsoAngle.toFixed(2)),
-            shin_angle: Number(shinAngle.toFixed(2)),
-            hip_below_knee: hipBelowKnee,
-            tempo_ms: Math.round(now - phaseStartTime),
-          },
-        };
-      }
-
-      function mean(values) {
-        return values.length
-          ? values.reduce((sum, value) => sum + value, 0) / values.length
-          : null;
-      }
-
-      function stddev(values) {
-        if (values.length < 2) return null;
-        const avg = mean(values);
-        return Math.sqrt(
-          values.reduce((sum, value) => sum + (value - avg) ** 2, 0) /
-            values.length,
-        );
-      }
-
-      function clamp(value, min, max) {
-        return Math.min(max, Math.max(min, value));
-      }
-
-      // ============================================================
-      // PHASE DETECTION
-      // ============================================================
-
-      const Phase = {
-        STANDING: "standing",
-        DESCENDING: "descending",
-        BOTTOM: "bottom",
-        ASCENDING: "ascending",
-      };
-
-      class PhaseDetector {
-        constructor() {
-          this.phase = Phase.STANDING;
-          this.angleHistory = [];
-          this.wasAtBottom = false;
-          this.repComplete = false;
-        }
-
-        update(kneeAngle) {
-          this.repComplete = false;
-          this.angleHistory.push(kneeAngle);
-          if (this.angleHistory.length > 8) this.angleHistory.shift();
-          const v = this.getVelocity();
-
-          switch (this.phase) {
-            case Phase.STANDING:
-              if (
-                kneeAngle < CONFIG.standingAngle &&
-                v < -CONFIG.angleVelocityThreshold
-              )
-                this.phase = Phase.DESCENDING;
-              break;
-            case Phase.DESCENDING:
-              if (
-                kneeAngle <= CONFIG.bottomAngle ||
-                (Math.abs(v) < CONFIG.angleVelocityThreshold &&
-                  kneeAngle < CONFIG.standingAngle - 15)
-              ) {
-                this.phase = Phase.BOTTOM;
-                this.wasAtBottom = true;
-              } else if (kneeAngle >= CONFIG.standingAngle)
-                this.phase = Phase.STANDING;
-              break;
-            case Phase.BOTTOM:
-              if (v > CONFIG.angleVelocityThreshold)
-                this.phase = Phase.ASCENDING;
-              else if (v < -CONFIG.angleVelocityThreshold)
-                this.phase = Phase.DESCENDING;
-              break;
-            case Phase.ASCENDING:
-              if (kneeAngle >= CONFIG.standingAngle) {
-                this.phase = Phase.STANDING;
-                if (this.wasAtBottom) {
-                  this.repComplete = true;
-                  this.wasAtBottom = false;
-                }
-              } else if (v < -CONFIG.angleVelocityThreshold * 1.5)
-                this.phase = Phase.DESCENDING;
-              break;
-          }
-          return { phase: this.phase, repComplete: this.repComplete };
-        }
-
-        getVelocity() {
-          if (this.angleHistory.length < 3) return 0;
-          const r = this.angleHistory.slice(-3);
-          return (r[r.length - 1] - r[0]) / (r.length - 1);
-        }
-      }
-
-      // ============================================================
-      // FORM CHECKER
-      // ============================================================
-
-      class FormChecker {
-        checkDepth(kneeAngle, phase) {
-          if (phase !== Phase.BOTTOM) return null;
-          return kneeAngle > CONFIG.depthAngle
-            ? {
-                id: "shallow",
-                type: "warn",
-                text: "Go deeper — break parallel",
-              }
-            : { id: "depth-ok", type: "good", text: "Good depth" };
-        }
-        checkKneeValgus(landmarks, phase) {
-          if (phase !== Phase.DESCENDING && phase !== Phase.BOTTOM) return null;
-          const kw = Math.abs(
-            landmarks[LM.LEFT_KNEE].x - landmarks[LM.RIGHT_KNEE].x,
-          );
-          const aw = Math.abs(
-            landmarks[LM.LEFT_ANKLE].x - landmarks[LM.RIGHT_ANKLE].x,
-          );
-          if (aw > 0.01 && kw / aw < CONFIG.valgusRatio)
-            return {
-              id: "valgus",
-              type: "bad",
-              text: "Knees caving — push them out",
-            };
-          return null;
-        }
-        checkTorsoLean(torsoAngle, phase) {
-          if (phase === Phase.STANDING) return null;
-          return torsoAngle > CONFIG.torsoLeanAngle
-            ? { id: "lean", type: "warn", text: "Too much forward lean" }
-            : null;
-        }
-      }
-
-      // ============================================================
-      // FEEDBACK ENGINE
-      // ============================================================
-
-      class FeedbackEngine {
-        constructor() {
-          this.cooldowns = new Map();
-          this.lastAudioTime = 0;
-        }
-
-        process(checks) {
-          const now = performance.now();
-          const results = [];
-          for (const c of checks) {
-            if (!c) continue;
-            const last = this.cooldowns.get(c.id) || 0;
-            if (now - last < CONFIG.feedbackCooldownMs) continue;
-            results.push(c);
-            this.cooldowns.set(c.id, now);
-            if (
-              c.type !== "good" &&
-              now - this.lastAudioTime > CONFIG.audioCooldownMs
-            ) {
-              this.speak(c.text);
-              this.lastAudioTime = now;
-            }
-          }
-          return results;
-        }
-
-        processRepComplete(n) {
-          const now = performance.now();
-          if (now - this.lastAudioTime > CONFIG.audioCooldownMs) {
-            this.speak(`Rep ${n}`);
-            this.lastAudioTime = now;
-          }
-          return { id: "rep", type: "good", text: `Nice rep! (${n})` };
-        }
-
-        speak(text) {
-          if (!window.speechSynthesis) return;
-          window.speechSynthesis.cancel();
-          const u = new SpeechSynthesisUtterance(text);
-          u.rate = 1.15;
-          u.pitch = 0.9;
-          u.volume = 0.75;
-          window.speechSynthesis.speak(u);
-        }
-      }
-
-      // ============================================================
-      // GEMMA WEBSOCKET CLIENT
-      // ============================================================
-
-      class GemmaClient {
-        constructor() {
-          this.ws = null;
-          this.connected = false;
-          this.lastCallTime = 0;
-          this.onFeedback = null;
-        }
-
-        connect() {
-          try {
-            this.ws = new WebSocket(`ws://${location.host}/ws/coach`);
-            this.ws.onopen = () => {
-              this.connected = true;
-              CONFIG.gemmaEnabled = true;
-              document.getElementById("coach-model-status").textContent =
-                "● Gemma 2B (local)";
-              document.getElementById("coach-model-status").className =
-                "active";
-            };
-            this.ws.onmessage = (e) => {
-              const data = JSON.parse(e.data);
-              if (this.onFeedback) this.onFeedback(data);
-            };
-            this.ws.onclose = () => {
-              this.connected = false;
-              CONFIG.gemmaEnabled = false;
-              document.getElementById("coach-model-status").textContent =
-                "○ Gemma 2B (disconnected)";
-              document.getElementById("coach-model-status").className =
-                "pending";
-            };
-            this.ws.onerror = () => {
-              this.connected = false;
-            };
-          } catch (e) {
-            console.log("Gemma WS not available — using rule-based fallback");
-          }
-        }
-
-        sendSignals(snapshot) {
-          if (!this.connected || !this.ws) return;
-          const now = performance.now();
-          if (now - this.lastCallTime < CONFIG.gemmaCallIntervalMs) return;
-          this.lastCallTime = now;
-          this.ws.send(JSON.stringify(snapshot));
-        }
-      }
-
-      // ============================================================
-      // RENDERER
-      // ============================================================
-
-      class Renderer {
-        constructor(canvas) {
-          this.canvas = canvas;
-          this.ctx = canvas.getContext("2d");
-        }
-        clear() {
-          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        }
-
-        drawSkeleton(landmarks, jointColors = {}) {
-          const ctx = this.ctx;
-          const w = this.canvas.width,
-            h = this.canvas.height;
-
-          ctx.lineWidth = 3;
-          ctx.lineCap = "round";
-          for (const [i, j] of SKELETON_CONNECTIONS) {
-            const a = landmarks[i],
-              b = landmarks[j];
-            if (
-              !a ||
-              !b ||
-              a.visibility < CONFIG.confidenceThreshold ||
-              b.visibility < CONFIG.confidenceThreshold
-            )
-              continue;
-            const grad = ctx.createLinearGradient(
-              a.x * w,
-              a.y * h,
-              b.x * w,
-              b.y * h,
-            );
-            grad.addColorStop(0, jointColors[i] || "rgba(0,212,255,0.6)");
-            grad.addColorStop(1, jointColors[j] || "rgba(0,212,255,0.6)");
-            ctx.strokeStyle = grad;
-            ctx.beginPath();
-            ctx.moveTo(a.x * w, a.y * h);
-            ctx.lineTo(b.x * w, b.y * h);
-            ctx.stroke();
-          }
-
-          for (let i = 0; i < landmarks.length; i++) {
-            const l = landmarks[i];
-            if (!l || l.visibility < CONFIG.confidenceThreshold) continue;
-            const color = jointColors[i] || "rgba(0,212,255,0.9)";
-            const isKey = [11, 12, 23, 24, 25, 26, 27, 28].includes(i);
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.arc(l.x * w, l.y * h, isKey ? 6 : 4, 0, Math.PI * 2);
-            ctx.fill();
-            if (isKey) {
-              ctx.strokeStyle = color;
-              ctx.lineWidth = 1.5;
-              ctx.beginPath();
-              ctx.arc(l.x * w, l.y * h, 9, 0, Math.PI * 2);
-              ctx.stroke();
-            }
-          }
-        }
-
-        drawAngleLabel(joint, angle) {
-          const ctx = this.ctx;
-          ctx.font = "600 13px monospace";
-          ctx.fillStyle = "rgba(255,255,255,0.7)";
-          ctx.textAlign = "center";
-          ctx.fillText(
-            `${Math.round(angle)}°`,
-            joint.x * this.canvas.width,
-            joint.y * this.canvas.height - 14,
-          );
-        }
-      }
-
-      // ============================================================
-      // UI HELPERS
-      // ============================================================
-
-      const $ = (id) => document.getElementById(id);
-
-      function updateStats(fps, avgConf, gatePass) {
-        $("val-fps").textContent = Math.round(fps);
-        $("val-conf").textContent = (avgConf * 100).toFixed(0) + "%";
-        $("val-gate").textContent = gatePass ? "PASS" : "DROP";
-        $("dot-fps").className =
-          "stat-dot" + (fps < 15 ? " bad" : fps < 25 ? " warn" : "");
-        $("dot-conf").className =
-          "stat-dot" + (avgConf < 0.5 ? " bad" : avgConf < 0.7 ? " warn" : "");
-        $("dot-gate").className = "stat-dot" + (gatePass ? "" : " bad");
-      }
-
-      function updateNetStatus() {
-        const online = navigator.onLine;
-        $("val-net").textContent = online ? "ONLINE" : "OFFLINE";
-        $("val-net").className =
-          "stat-value " + (online ? "online" : "offline-ok");
-        $("dot-net").className = "stat-dot"; // always green — we don't need internet
-      }
-
-      function updateAngles(k, h, t) {
-        $("val-knee").textContent = Math.round(k) + "°";
-        $("val-hip").textContent = Math.round(h) + "°";
-        $("val-torso").textContent = Math.round(t) + "°";
-      }
-
-      function updatePhase(phase) {
-        document.querySelectorAll(".phase-item").forEach((el) => {
-          el.classList.toggle("active", el.dataset.phase === phase);
-        });
-      }
-
-      let feedbackTimeout = null;
-      function updateFeedback(messages) {
-        if (!messages.length) return;
-        const panel = $("feedback-panel");
-        panel.innerHTML = "";
-        for (const msg of messages) {
-          const div = document.createElement("div");
-          div.className = `feedback-msg ${msg.type}`;
-          div.textContent = msg.text;
-          panel.appendChild(div);
-        }
-        clearTimeout(feedbackTimeout);
-        feedbackTimeout = setTimeout(() => {
-          panel.innerHTML = "";
-        }, 2500);
-      }
-
-      function updateSetupCheck(id, passed, label = passed ? "PASS" : "FAIL") {
-        const node = $(id);
-        node.className = `setup-item ${passed ? "pass" : "warn"}`;
-        node.querySelector(".setup-item-state").textContent = label;
-      }
-
-      function updateSetupPanel(analysis, state) {
-        updateSetupCheck("setup-head", analysis.checks.head);
-        updateSetupCheck("setup-feet", analysis.checks.feet);
-        updateSetupCheck(
-          "setup-distance",
-          analysis.checks.distance,
-          analysis.checks.distance ? "PASS" : "ADJUST",
-        );
-        updateSetupCheck(
-          "setup-center",
-          analysis.checks.center,
-          analysis.checks.center ? "PASS" : "ADJUST",
-        );
-        updateSetupCheck(
-          "setup-view",
-          analysis.checks.view,
-          analysis.checks.view ? "PASS" : "ROTATE",
-        );
-        $("setup-instruction").textContent = analysis.instruction;
-        $("setup-status").textContent = state.locked
-          ? `Hold green framing for ${((CONFIG.setupReadyMs - state.readyMs) / 1000).toFixed(1)}s`
-          : "Ready";
-        $("setup-start-btn").disabled = state.locked;
-      }
-
-      function updateRecorderPanel(recorder) {
-        const metrics = recorder.getMetrics();
-        $("record-frames").textContent = metrics.frames;
-        $("record-reps").textContent = metrics.reps;
-        $("record-gate-pass").textContent =
-          metrics.gatePassRate == null
-            ? "—"
-            : `${(metrics.gatePassRate * 100).toFixed(0)}%`;
-        $("record-status").textContent = recorder.active
-          ? "Recorder running"
-          : metrics.frames
-            ? "Recorder ready"
-            : "Recorder idle";
-        $("record-start-btn").disabled = recorder.active;
-        $("record-stop-btn").disabled = !recorder.active;
-        $("record-export-btn").disabled = recorder.active || !metrics.frames;
-      }
-
-      // ============================================================
-      // MAIN
-      // ============================================================
-
-      async function main() {
-        const statusEl = $("load-status");
-
-        // Network status indicator
-        updateNetStatus();
-        window.addEventListener("online", updateNetStatus);
-        window.addEventListener("offline", updateNetStatus);
-
-        // Load MediaPipe — ALL FROM LOCAL SERVER
-        statusEl.textContent = "Loading WASM runtime from disk...";
-        const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
-
-        statusEl.textContent = "Loading pose model from disk (~4MB)...";
-        const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "/models/pose_landmarker_lite.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numPoses: 1,
-        });
-
-        statusEl.textContent = "Requesting camera...";
-        let stream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              facingMode: "user",
-            },
-            audio: false,
-          });
-        } catch (e) {
-          $("loading").classList.add("hidden");
-          $("error-msg").textContent =
-            e.name === "NotAllowedError"
-              ? "Camera access denied. Allow camera and reload."
-              : `Camera error: ${e.message}`;
-          $("error-overlay").classList.add("visible");
-          return;
-        }
-
-        const video = $("video");
-        video.srcObject = stream;
-        await new Promise((r) => {
-          video.onloadedmetadata = r;
-        });
-        await video.play();
-
-        $("loading").classList.add("hidden");
-        $("start-screen").classList.add("visible");
-
-        await new Promise((r) =>
-          $("start-btn").addEventListener("click", r, { once: true }),
-        );
-        $("start-screen").classList.remove("visible");
-        $("main").classList.add("active");
-
-        const canvas = $("overlay");
-        const renderer = new Renderer(canvas);
-        function resize() {
-          canvas.width = $("video-container").clientWidth;
-          canvas.height = $("video-container").clientHeight;
-        }
-        resize();
-        window.addEventListener("resize", resize);
-
-        // Init pipeline
-        const smoother = new LandmarkSmoother(CONFIG.emaAlpha);
-        const phaseDetector = new PhaseDetector();
-        const formChecker = new FormChecker();
-        const decisionGate = new DecisionGate(CONFIG.decisionPersistMs);
-        const feedbackEngine = new FeedbackEngine();
-        const recorder = new SessionRecorder();
-        const setupGate = new SetupGate();
-
-        // Try connecting to Gemma WebSocket
-        const gemma = new GemmaClient();
-        if (CONFIG.gemmaAutoConnect) gemma.connect();
-        gemma.onFeedback = (data) => {
-          if (data.feedback && data.severity !== "info") {
-            updateFeedback([
-              {
-                id: "gemma",
-                type: data.severity || "info",
-                text: data.feedback,
-              },
-            ]);
-            if (data.speak) feedbackEngine.speak(data.feedback);
-          }
-        };
-
-        let repCount = 0;
-        let repModeActive = false;
-        let lastFrameTime = performance.now();
-        let fpsHistory = [];
-        let depthHistory = [];
-        let lastPhase = Phase.STANDING;
-        let phaseStartTime = performance.now();
-        let phaseDurations = {};
-        let currentBottomMin = null;
-        let repStartTime = performance.now();
-
-        const keyJoints = [
-          LM.LEFT_HIP,
-          LM.RIGHT_HIP,
-          LM.LEFT_KNEE,
-          LM.RIGHT_KNEE,
-          LM.LEFT_ANKLE,
-          LM.RIGHT_ANKLE,
-          LM.LEFT_SHOULDER,
-          LM.RIGHT_SHOULDER,
-        ];
-
-        $("setup-start-btn").addEventListener("click", () => {
-          repModeActive = true;
-          setupGate.unlock();
-          $("setup-panel").classList.add("hidden");
-          updateFeedback([
-            {
-              id: "setup",
-              type: "good",
-              text: "Setup locked. Start your set.",
-            },
-          ]);
-        });
-        $("record-start-btn").addEventListener("click", () => {
-          recorder.start({
-            cameraAngle: $("record-angle").value,
-            cameraHeight: $("record-height").value,
-          });
-          updateRecorderPanel(recorder);
-        });
-        $("record-stop-btn").addEventListener("click", () => {
-          recorder.stop();
-          updateRecorderPanel(recorder);
-        });
-        $("record-reset-btn").addEventListener("click", () => {
-          recorder.reset();
-          updateRecorderPanel(recorder);
-        });
-        $("record-export-btn").addEventListener("click", () => {
-          if (recorder.export()) {
-            updateFeedback([
-              { id: "export", type: "good", text: "Session JSON exported" },
-            ]);
-          }
-        });
-        updateRecorderPanel(recorder);
-
-        function processFrame() {
-          const now = performance.now();
-          const dt = now - lastFrameTime;
-          lastFrameTime = now;
-          fpsHistory.push(1000 / dt);
-          if (fpsHistory.length > 30) fpsHistory.shift();
-          const fps = fpsHistory.reduce((a, b) => a + b) / fpsHistory.length;
-
-          const result = poseLandmarker.detectForVideo(video, now);
-          renderer.clear();
-
-          if (!result.landmarks || result.landmarks.length === 0) {
-            updateStats(fps, 0, false);
-            recorder.record({
-              timestamp_ms: Math.round(now),
-              camera_angle: $("record-angle").value,
-              camera_height: $("record-height").value,
-              gate_pass: false,
-              confidence_avg: 0,
-              confidence_min: 0,
-              knee_angle: null,
-              knee_angle_left: null,
-              knee_angle_right: null,
-              hip_angle: null,
-              torso_angle: null,
-              knee_valgus_ratio: null,
-              left_right_knee_diff: null,
-              phase: "no_pose",
-              rep_number: repCount,
-              rep_complete: false,
-              setup_state: null,
-              setup: {
-                head_visible: false,
-                feet_visible: false,
-                centered: false,
-                side_view: false,
-              },
-              live: null,
-            });
-            updateRecorderPanel(recorder);
-            requestAnimationFrame(processFrame);
-            return;
-          }
-
-          const raw = result.landmarks[0];
-          const confs = keyJoints.map((i) => raw[i]?.visibility ?? 0);
-          const avgConf = confs.reduce((a, b) => a + b) / confs.length;
-          const minConf = Math.min(...confs);
-          const gatePass = minConf >= CONFIG.confidenceThreshold;
-          updateStats(fps, avgConf, gatePass);
-
-          const setupAnalysis = setupGate.evaluate(
-            raw,
-            video.videoWidth || 1280,
-            video.videoHeight || 720,
-          );
-          const setupState = setupGate.update(setupAnalysis, now);
-          updateSetupPanel(setupAnalysis, setupState);
-
-          if (!gatePass) {
-            renderer.drawSkeleton(raw, {});
-            recorder.record({
-              timestamp_ms: Math.round(now),
-              camera_angle: $("record-angle").value,
-              camera_height: $("record-height").value,
-              gate_pass: false,
-              confidence_avg: Number(avgConf.toFixed(4)),
-              confidence_min: Number(minConf.toFixed(4)),
-              knee_angle: null,
-              knee_angle_left: null,
-              knee_angle_right: null,
-              hip_angle: null,
-              torso_angle: null,
-              knee_valgus_ratio: null,
-              left_right_knee_diff: null,
-              phase: phaseDetector.phase,
-              rep_number: repCount,
-              rep_complete: false,
-              setup_state: setupAnalysis.checks,
-              setup: {
-                head_visible: setupAnalysis.checks.head,
-                feet_visible: setupAnalysis.checks.feet,
-                centered: setupAnalysis.checks.center,
-                side_view: setupAnalysis.checks.view,
-              },
-              live: null,
-            });
-            updateRecorderPanel(recorder);
-            requestAnimationFrame(processFrame);
-            return;
-          }
-
-          const landmarks = smoother.update(raw);
-          const provisionalMetrics = computeLiveMetrics(
-            landmarks,
-            phaseDetector.phase,
-            repCount,
-            now,
-            phaseStartTime,
-          );
-          if (!provisionalMetrics) {
-            requestAnimationFrame(processFrame);
-            return;
-          }
-          const {
-            lKnee,
-            rKnee,
-            kneeAngle,
-            hipAngle,
-            torsoAngle,
-            shinAngle,
-            hipBelowKnee,
-            live,
-          } = provisionalMetrics;
-          updateAngles(kneeAngle, hipAngle, torsoAngle);
-
-          if (!repModeActive) {
-            renderer.drawSkeleton(landmarks, {});
-            renderer.drawAngleLabel(landmarks[LM.LEFT_KNEE], lKnee);
-            renderer.drawAngleLabel(landmarks[LM.RIGHT_KNEE], rKnee);
-            requestAnimationFrame(processFrame);
-            return;
-          }
-
-          if (
-            phaseDetector.phase === Phase.BOTTOM ||
-            currentBottomMin == null ||
-            kneeAngle < currentBottomMin.knee_angle
-          ) {
-            currentBottomMin = {
-              knee_angle: Number(kneeAngle.toFixed(2)),
-              knee_angle_left: Number(lKnee.toFixed(2)),
-              knee_angle_right: Number(rKnee.toFixed(2)),
-              hip_angle: Number(hipAngle.toFixed(2)),
-              torso_angle: Number(torsoAngle.toFixed(2)),
-            };
-          }
-
-          // Phase
-          const { phase, repComplete } = phaseDetector.update(kneeAngle);
-          updatePhase(phase);
-
-          // Track phase durations for Gemma
-          if (phase !== lastPhase) {
-            phaseDurations[lastPhase] = now - phaseStartTime;
-            phaseStartTime = now;
-            lastPhase = phase;
-            if (phase === Phase.DESCENDING) repStartTime = now;
-          }
-
-          // Track depth history
-          if (phase === Phase.BOTTOM) {
-            if (
-              depthHistory.length === 0 ||
-              depthHistory[depthHistory.length - 1] !== Math.round(kneeAngle)
-            ) {
-              depthHistory.push(Math.round(kneeAngle));
-              if (depthHistory.length > 20) depthHistory.shift();
-            }
-          }
-
-          if (repComplete) {
-            repCount++;
-            $("rep-count").textContent = repCount;
-            updateFeedback([feedbackEngine.processRepComplete(repCount)]);
-            recorder.addRepSummary({
-              rep_number: repCount,
-              bottom_frame: currentBottomMin,
-              tempo: {
-                descent_ms: Math.round(phaseDurations[Phase.DESCENDING] || 0),
-                bottom_ms: Math.round(phaseDurations[Phase.BOTTOM] || 0),
-                ascent_ms: Math.round(phaseDurations[Phase.ASCENDING] || 0),
-                total_ms: Math.round(now - repStartTime),
-              },
-            });
-            currentBottomMin = null;
-            updateRecorderPanel(recorder);
-          }
-
-          const kw = Math.abs(
-            landmarks[LM.LEFT_KNEE].x - landmarks[LM.RIGHT_KNEE].x,
-          );
-          const aw = Math.abs(
-            landmarks[LM.LEFT_ANKLE].x - landmarks[LM.RIGHT_ANKLE].x,
-          );
-          const kneeValgusRatio = aw > 0.01 ? kw / aw : null;
-
-          recorder.record({
-            timestamp_ms: Math.round(now),
-            camera_angle: $("record-angle").value,
-            camera_height: $("record-height").value,
-            gate_pass: true,
-            confidence_avg: Number(avgConf.toFixed(4)),
-            confidence_min: Number(minConf.toFixed(4)),
-            knee_angle: Number(kneeAngle.toFixed(2)),
-            knee_angle_left: Number(lKnee.toFixed(2)),
-            knee_angle_right: Number(rKnee.toFixed(2)),
-            hip_angle: Number(hipAngle.toFixed(2)),
-            torso_angle: Number(torsoAngle.toFixed(2)),
-            knee_valgus_ratio:
-              kneeValgusRatio == null
-                ? null
-                : Number(kneeValgusRatio.toFixed(4)),
-            left_right_knee_diff: Number(Math.abs(lKnee - rKnee).toFixed(2)),
-            phase,
-            rep_number: repCount,
-            rep_complete: repComplete,
-            setup_state: setupAnalysis.checks,
-            setup: {
-              head_visible: setupAnalysis.checks.head,
-              feet_visible: setupAnalysis.checks.feet,
-              centered: setupAnalysis.checks.center,
-              side_view: setupAnalysis.checks.view,
-            },
-            live,
-            shin_angle: Number(shinAngle.toFixed(2)),
-            hip_below_knee: hipBelowKnee,
-          });
-          updateRecorderPanel(recorder);
-
-          // Form checks
-          const checks = [
-            formChecker.checkDepth(kneeAngle, phase),
-            formChecker.checkKneeValgus(landmarks, phase),
-            formChecker.checkTorsoLean(torsoAngle, phase),
-          ].filter(Boolean);
-
-          for (const c of checks) decisionGate.update(c.id, true);
-          for (const id of ["shallow", "valgus", "lean", "depth-ok"]) {
-            if (!checks.find((c) => c.id === id))
-              decisionGate.update(id, false);
-          }
-
-          const confirmed = checks.filter((c) =>
-            decisionGate.isConfirmed(c.id),
-          );
-
-          if (!repComplete && confirmed.length > 0) {
-            const fb = feedbackEngine.process(confirmed);
-            if (fb.length > 0) updateFeedback(fb);
-          }
-
-          // Send signals to Gemma on phase transitions or periodically
-          if (gemma.connected) {
-            gemma.sendSignals({
-              phase,
-              rep_number: repCount,
-              knee_angle: Math.round(kneeAngle * 10) / 10,
-              hip_angle: Math.round(hipAngle * 10) / 10,
-              torso_angle: Math.round(torsoAngle * 10) / 10,
-              shin_angle: Math.round(shinAngle * 10) / 10,
-              hip_below_knee: hipBelowKnee,
-              confidence_min: Number(minConf.toFixed(4)),
-              knee_valgus_ratio:
-                kneeValgusRatio != null
-                  ? Math.round(kneeValgusRatio * 100) / 100
-                  : null,
-            });
-          }
-
-          // Render
-          const colors = {};
-          const good = "rgba(0,232,123,0.9)",
-            warn = "rgba(255,210,63,0.9)",
-            bad = "rgba(255,71,87,0.9)";
-          for (const idx of keyJoints) colors[idx] = "rgba(0,212,255,0.7)";
-
-          if (decisionGate.isConfirmed("valgus")) {
-            colors[LM.LEFT_KNEE] = bad;
-            colors[LM.RIGHT_KNEE] = bad;
-          }
-          if (decisionGate.isConfirmed("lean")) {
-            colors[LM.LEFT_SHOULDER] = warn;
-            colors[LM.RIGHT_SHOULDER] = warn;
-          }
-          if (decisionGate.isConfirmed("shallow")) {
-            colors[LM.LEFT_KNEE] = warn;
-            colors[LM.RIGHT_KNEE] = warn;
-            colors[LM.LEFT_HIP] = warn;
-            colors[LM.RIGHT_HIP] = warn;
-          }
-          if (decisionGate.isConfirmed("depth-ok")) {
-            colors[LM.LEFT_KNEE] = good;
-            colors[LM.RIGHT_KNEE] = good;
-            colors[LM.LEFT_HIP] = good;
-            colors[LM.RIGHT_HIP] = good;
-          }
-
-          renderer.drawSkeleton(landmarks, colors);
-          renderer.drawAngleLabel(landmarks[LM.LEFT_KNEE], lKnee);
-          renderer.drawAngleLabel(landmarks[LM.RIGHT_KNEE], rKnee);
-
-          requestAnimationFrame(processFrame);
-        }
-
-        requestAnimationFrame(processFrame);
-      }
-
-      main().catch((err) => {
-        console.error("Fatal:", err);
-        document.getElementById("load-status").textContent =
-          `Error: ${err.message}`;
+    <div id="phase-panel" class="hud-panel">
+      <div class="phase-item" id="phase-standing" data-phase="standing">
+        <div class="phase-dot"></div><span>Standing</span>
+      </div>
+      <div class="phase-connector"></div>
+      <div class="phase-item" id="phase-descending" data-phase="descending">
+        <div class="phase-dot"></div><span>Descent</span>
+      </div>
+      <div class="phase-connector"></div>
+      <div class="phase-item" id="phase-bottom" data-phase="bottom">
+        <div class="phase-dot"></div><span>Bottom</span>
+      </div>
+      <div class="phase-connector"></div>
+      <div class="phase-item" id="phase-ascending" data-phase="ascending">
+        <div class="phase-dot"></div><span>Ascent</span>
+      </div>
+    </div>
+
+    <div id="rep-panel" class="hud-panel">
+      <div id="rep-count">0</div>
+      <div id="rep-label">REPS</div>
+    </div>
+
+    <div id="setup-panel" class="hud-panel">
+      <div class="panel-title">Auto Setup</div>
+      <div class="setup-status" id="setup-status">Checking framing...</div>
+      <div class="setup-instruction" id="setup-instruction">Use a floor-mounted side view with your head and ankles visible.</div>
+      <div class="setup-list">
+        <div class="setup-item" id="setup-head"><span class="setup-item-label">Head visible</span><span class="setup-item-state">FAIL</span></div>
+        <div class="setup-item" id="setup-feet"><span class="setup-item-label">Feet visible</span><span class="setup-item-state">FAIL</span></div>
+        <div class="setup-item" id="setup-distance"><span class="setup-item-label">Distance</span><span class="setup-item-state">CHECK</span></div>
+        <div class="setup-item" id="setup-center"><span class="setup-item-label">Centered</span><span class="setup-item-state">CHECK</span></div>
+        <div class="setup-item" id="setup-view"><span class="setup-item-label">Side view</span><span class="setup-item-state">CHECK</span></div>
+      </div>
+      <div class="setup-divider"></div>
+      <div class="setup-status" id="record-status">Recorder idle</div>
+      <div class="setup-list">
+        <div class="setup-item"><span class="setup-item-label">Camera angle</span><span class="setup-item-state">SIDE</span></div>
+        <div class="setup-item"><span class="setup-item-label">Height</span><span class="setup-item-state">FLOOR</span></div>
+      </div>
+      <div class="setup-controls">
+        <button id="record-start-btn" class="setup-btn">Start Rec</button>
+        <button id="record-stop-btn" class="setup-btn" disabled>Stop Rec</button>
+        <button id="record-export-btn" class="setup-btn" disabled>Export JSON</button>
+        <button id="record-reset-btn" class="setup-btn">Reset</button>
+      </div>
+      <div class="setup-metric"><span>Frames</span><span id="record-frames">0</span></div>
+      <div class="setup-metric"><span>Reps</span><span id="record-reps">0</span></div>
+      <div class="setup-metric"><span>Gate pass</span><span id="record-gate-pass">—</span></div>
+    </div>
+
+    <div id="feedback-panel"></div>
+
+    <div id="model-panel" class="hud-panel">
+      <div class="model-line">POSE <span class="active">● MediaPipe Lite</span></div>
+      <div class="model-line">SMOOTH <span class="active">● EMA α=0.7</span></div>
+      <div class="model-line">COACH <span class="pending" id="coach-model-status">○ Gemma 2B (connect)</span></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ============================================================
+// LOCAL IMPORTS — no CDN, everything from disk via local server
+// ============================================================
+import {
+  PoseLandmarker,
+  FilesetResolver,
+} from "/mediapipe/vision_bundle.mjs";
+
+// ============================================================
+// CONFIG
+// ============================================================
+const CONFIG = {
+  confidenceThreshold: 0.5,
+  emaAlpha: 0.7,
+  standingAngle: 155,
+  bottomAngle: 110,
+  angleVelocityThreshold: 1.5,
+  depthAngle: 100,
+  torsoLeanAngle: 45,
+  valgusRatio: 0.82,
+  decisionPersistMs: 250,
+  feedbackCooldownMs: 2000,
+  audioCooldownMs: 3000,
+  // Gemma integration
+  gemmaEnabled: false,
+  gemmaAutoConnect: true,
+  gemmaCallOnPhaseChange: true,
+  gemmaCallIntervalMs: 2000,
+  setupReadyMs: 1500,
+  minBodyFill: 0.55,
+  maxBodyFill: 0.9,
+  maxCenterOffset: 0.1,
+  sideViewSpreadMax: 0.18,
+};
+
+const RECORDING_PROFILE = {
+  cameraAngle: 'side',
+  cameraHeight: 'floor',
+};
+
+const LM = {
+  LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
+  LEFT_ELBOW: 13, RIGHT_ELBOW: 14,
+  LEFT_WRIST: 15, RIGHT_WRIST: 16,
+  LEFT_HIP: 23, RIGHT_HIP: 24,
+  LEFT_KNEE: 25, RIGHT_KNEE: 26,
+  LEFT_ANKLE: 27, RIGHT_ANKLE: 28,
+  LEFT_HEEL: 29, RIGHT_HEEL: 30,
+  LEFT_FOOT_INDEX: 31, RIGHT_FOOT_INDEX: 32,
+};
+
+const SKELETON_CONNECTIONS = [
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  [23, 25], [25, 27], [24, 26], [26, 28],
+  [11, 13], [13, 15], [12, 14], [14, 16],
+];
+
+// ============================================================
+// UTILITY CLASSES
+// ============================================================
+
+class LandmarkSmoother {
+  constructor(alpha) { this.alpha = alpha; this.prev = null; }
+  update(landmarks) {
+    if (!this.prev) { this.prev = landmarks.map(l => ({ ...l })); return landmarks; }
+    const s = landmarks.map((l, i) => ({
+      x: this.alpha * l.x + (1 - this.alpha) * this.prev[i].x,
+      y: this.alpha * l.y + (1 - this.alpha) * this.prev[i].y,
+      z: this.alpha * l.z + (1 - this.alpha) * this.prev[i].z,
+      visibility: l.visibility,
+    }));
+    this.prev = s.map(l => ({ ...l }));
+    return s;
+  }
+}
+
+class DecisionGate {
+  constructor(persistMs) { this.persistMs = persistMs; this.issues = new Map(); }
+  update(id, detected) {
+    const now = performance.now();
+    if (detected) {
+      if (!this.issues.has(id)) this.issues.set(id, { start: now, confirmed: false });
+      else { const e = this.issues.get(id); if (!e.confirmed && now - e.start >= this.persistMs) e.confirmed = true; }
+    } else { this.issues.delete(id); }
+  }
+  isConfirmed(id) { return this.issues.get(id)?.confirmed ?? false; }
+}
+
+class SessionRecorder {
+  constructor() {
+    this.reset();
+  }
+
+  start(meta, stream) {
+    this.active = true;
+    this.videoReady = false;
+    this.videoBlob = null;
+    this.videoChunks = [];
+    this.videoMimeType = this.pickVideoMimeType();
+    this.session = {
+      session_id: `session-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+      created_at: new Date().toISOString(),
+      camera_angle: meta.cameraAngle,
+      camera_height: meta.cameraHeight,
+      schema_version: 'v2-side-view',
+      video_capture: {
+        enabled: !!(stream && window.MediaRecorder && this.videoMimeType),
+        mime_type: this.videoMimeType,
+      },
+      frames: [],
+      rep_summaries: [],
+    };
+    if (stream && window.MediaRecorder && this.videoMimeType) {
+      this.mediaRecorder = new MediaRecorder(stream, { mimeType: this.videoMimeType });
+      this.mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data && event.data.size) this.videoChunks.push(event.data);
       });
-    </script>
-  </body>
+      this.mediaRecorder.addEventListener('stop', () => {
+        this.videoBlob = this.videoChunks.length
+          ? new Blob(this.videoChunks, { type: this.videoMimeType })
+          : null;
+        this.videoReady = true;
+      });
+      this.mediaRecorder.start(1000);
+    } else {
+      this.videoReady = true;
+    }
+  }
+
+  stop() {
+    this.active = false;
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    } else {
+      this.videoReady = true;
+    }
+  }
+
+  reset() {
+    this.active = false;
+    this.session = null;
+    this.mediaRecorder = null;
+    this.videoBlob = null;
+    this.videoChunks = [];
+    this.videoMimeType = '';
+    this.videoReady = false;
+  }
+
+  record(frame) {
+    if (!this.active || !this.session) return;
+    this.session.frames.push(frame);
+  }
+
+  addRepSummary(summary) {
+    if (!this.session) return;
+    this.session.rep_summaries.push(summary);
+  }
+
+  getMetrics() {
+    if (!this.session) return { frames: 0, reps: 0, gatePassRate: null, videoReady: false };
+    const frames = this.session.frames.length;
+    const gatePass = this.session.frames.filter(frame => frame.gate_pass).length;
+    return {
+      frames,
+      reps: this.session.rep_summaries.length,
+      gatePassRate: frames ? gatePass / frames : null,
+      videoReady: this.videoReady,
+    };
+  }
+
+  export() {
+    if (!this.session || !this.session.frames.length || !this.videoReady) return false;
+    const baseName = `${this.session.camera_angle}-${this.session.camera_height}-${this.session.session_id}`;
+    const exportPayload = this.buildExportPayload();
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${baseName}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    if (this.videoBlob) {
+      const videoUrl = URL.createObjectURL(this.videoBlob);
+      const videoAnchor = document.createElement('a');
+      videoAnchor.href = videoUrl;
+      videoAnchor.download = `${baseName}.${this.videoExtension()}`;
+      document.body.appendChild(videoAnchor);
+      videoAnchor.click();
+      videoAnchor.remove();
+      URL.revokeObjectURL(videoUrl);
+    }
+    return true;
+  }
+
+  buildExportPayload() {
+    const frames = this.session.frames;
+    const setupSamples = frames
+      .filter(frame => !frame.gate_pass || !frame.rep_mode_active)
+      .map(frame => ({
+        timestamp_ms: frame.timestamp_ms,
+        head_visible: frame.setup?.head_visible ?? false,
+        feet_visible: frame.setup?.feet_visible ?? false,
+        centered: frame.setup?.centered ?? false,
+        side_view: frame.setup?.side_view ?? false,
+        gate_pass: frame.gate_pass,
+        confidence_avg: frame.confidence_avg,
+      }));
+    const liveFrames = frames
+      .filter(frame => frame.gate_pass && frame.rep_mode_active)
+      .map(frame => ({
+        timestamp_ms: frame.timestamp_ms,
+        phase: frame.live?.phase ?? frame.phase,
+        rep_count: frame.live?.rep_count ?? frame.rep_number,
+        knee_angle: frame.live?.knee_angle ?? null,
+        hip_angle: frame.live?.hip_angle ?? null,
+        torso_angle: frame.live?.torso_angle ?? null,
+        shin_angle: frame.live?.shin_angle ?? null,
+        hip_below_knee: frame.live?.hip_below_knee ?? null,
+        tempo_ms: frame.live?.tempo_ms ?? null,
+      }));
+    return {
+      ...this.session,
+      datasets: {
+        setup_coach: setupSamples,
+        live_cue_side: liveFrames,
+      },
+    };
+  }
+
+  pickVideoMimeType() {
+    if (!window.MediaRecorder) return '';
+    const candidates = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+      'video/mp4',
+    ];
+    return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+  }
+
+  videoExtension() {
+    return this.videoMimeType.includes('mp4') ? 'mp4' : 'webm';
+  }
+}
+
+class SetupGate {
+  constructor() {
+    this.readySince = null;
+    this.locked = true;
+  }
+
+  evaluate(landmarks, frameWidth, frameHeight) {
+    const head = landmarks[0];
+    const leftAnkle = landmarks[LM.LEFT_ANKLE];
+    const rightAnkle = landmarks[LM.RIGHT_ANKLE];
+    const shoulderMidX = (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) / 2;
+    const hipMidX = (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2;
+    const visible = [head, landmarks[LM.LEFT_SHOULDER], landmarks[LM.RIGHT_SHOULDER], landmarks[LM.LEFT_HIP], landmarks[LM.RIGHT_HIP], landmarks[LM.LEFT_KNEE], landmarks[LM.RIGHT_KNEE], leftAnkle, rightAnkle]
+      .filter(Boolean)
+      .filter(point => point.visibility >= CONFIG.confidenceThreshold);
+
+    const bbox = visible.length ? {
+      minX: Math.min(...visible.map(point => point.x)),
+      maxX: Math.max(...visible.map(point => point.x)),
+      minY: Math.min(...visible.map(point => point.y)),
+      maxY: Math.max(...visible.map(point => point.y)),
+    } : null;
+
+    const bodyFill = bbox ? bbox.maxY - bbox.minY : 0;
+    const centerX = bbox ? (bbox.minX + bbox.maxX) / 2 : 0.5;
+    const centerOffset = Math.abs(centerX - 0.5);
+    const sideSpread = Math.abs(shoulderMidX - hipMidX) + Math.abs(landmarks[LM.LEFT_SHOULDER].x - landmarks[LM.RIGHT_SHOULDER].x) * 0.5;
+
+    const checks = {
+      head: !!head && head.visibility >= CONFIG.confidenceThreshold,
+      feet: !!leftAnkle && !!rightAnkle && leftAnkle.visibility >= CONFIG.confidenceThreshold && rightAnkle.visibility >= CONFIG.confidenceThreshold,
+      distance: bodyFill >= CONFIG.minBodyFill && bodyFill <= CONFIG.maxBodyFill,
+      center: centerOffset <= CONFIG.maxCenterOffset,
+      view: sideSpread <= CONFIG.sideViewSpreadMax,
+    };
+
+    const orderedFailures = [
+      !checks.head && 'Tilt camera up or step back so your head is visible.',
+      !checks.feet && 'Step back or tilt the camera down so both feet are visible.',
+      !checks.distance && (bodyFill > CONFIG.maxBodyFill ? 'You are too close. Step back.' : 'You are too far. Step closer.'),
+      !checks.center && (centerX < 0.5 ? 'Move slightly to your right.' : 'Move slightly to your left.'),
+      !checks.view && 'Rotate into a clearer side view.',
+    ].filter(Boolean);
+
+    return {
+      checks,
+      instruction: orderedFailures[0] || 'Framing looks good. Hold steady.',
+      bodyFill,
+      centerOffset,
+      sideSpread,
+    };
+  }
+
+  update(analysis, now) {
+    const allGood = Object.values(analysis.checks).every(Boolean);
+    if (allGood) {
+      if (this.readySince == null) this.readySince = now;
+      if (now - this.readySince >= CONFIG.setupReadyMs) this.locked = false;
+    } else {
+      this.readySince = null;
+      this.locked = true;
+    }
+    return {
+      locked: this.locked,
+      readyMs: this.readySince == null ? 0 : clamp(now - this.readySince, 0, CONFIG.setupReadyMs),
+    };
+  }
+}
+
+// ============================================================
+// ANGLE COMPUTATION
+// ============================================================
+
+function computeAngle(a, b, c) {
+  const ba = { x: a.x - b.x, y: a.y - b.y };
+  const bc = { x: c.x - b.x, y: c.y - b.y };
+  const dot = ba.x * bc.x + ba.y * bc.y;
+  const magBA = Math.sqrt(ba.x ** 2 + ba.y ** 2);
+  const magBC = Math.sqrt(bc.x ** 2 + bc.y ** 2);
+  if (magBA === 0 || magBC === 0) return 180;
+  return Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))) * (180 / Math.PI);
+}
+
+function computeTorsoAngle(shoulder, hip) {
+  const dx = shoulder.x - hip.x;
+  const dy = shoulder.y - hip.y;
+  return Math.abs(Math.atan2(Math.abs(dx), -dy) * (180 / Math.PI));
+}
+
+function computeSegmentAngle(top, bottom) {
+  const dx = top.x - bottom.x;
+  const dy = top.y - bottom.y;
+  return Math.abs(Math.atan2(Math.abs(dx), Math.abs(dy)) * (180 / Math.PI));
+}
+
+function hasPoint(point) {
+  return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function computeLiveMetrics(landmarks, phase, repCount, now, phaseStartTime) {
+  const required = [
+    landmarks[LM.LEFT_SHOULDER], landmarks[LM.RIGHT_SHOULDER],
+    landmarks[LM.LEFT_HIP], landmarks[LM.RIGHT_HIP],
+    landmarks[LM.LEFT_KNEE], landmarks[LM.RIGHT_KNEE],
+    landmarks[LM.LEFT_ANKLE], landmarks[LM.RIGHT_ANKLE],
+  ];
+  if (!required.every(hasPoint)) return null;
+
+  const lKnee = computeAngle(landmarks[LM.LEFT_HIP], landmarks[LM.LEFT_KNEE], landmarks[LM.LEFT_ANKLE]);
+  const rKnee = computeAngle(landmarks[LM.RIGHT_HIP], landmarks[LM.RIGHT_KNEE], landmarks[LM.RIGHT_ANKLE]);
+  const kneeAngle = (lKnee + rKnee) / 2;
+  const lHip = computeAngle(landmarks[LM.LEFT_SHOULDER], landmarks[LM.LEFT_HIP], landmarks[LM.LEFT_KNEE]);
+  const rHip = computeAngle(landmarks[LM.RIGHT_SHOULDER], landmarks[LM.RIGHT_HIP], landmarks[LM.RIGHT_KNEE]);
+  const hipAngle = (lHip + rHip) / 2;
+  const midS = {
+    x: (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) / 2,
+    y: (landmarks[LM.LEFT_SHOULDER].y + landmarks[LM.RIGHT_SHOULDER].y) / 2,
+  };
+  const midH = {
+    x: (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2,
+    y: (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2,
+  };
+  const torsoAngle = computeTorsoAngle(midS, midH);
+  const leftShinAngle = computeSegmentAngle(landmarks[LM.LEFT_KNEE], landmarks[LM.LEFT_ANKLE]);
+  const rightShinAngle = computeSegmentAngle(landmarks[LM.RIGHT_KNEE], landmarks[LM.RIGHT_ANKLE]);
+  const shinAngle = (leftShinAngle + rightShinAngle) / 2;
+  const kneeMidY = (landmarks[LM.LEFT_KNEE].y + landmarks[LM.RIGHT_KNEE].y) / 2;
+  const hipMidY = (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2;
+  return {
+    lKnee,
+    rKnee,
+    kneeAngle,
+    lHip,
+    rHip,
+    hipAngle,
+    torsoAngle,
+    shinAngle,
+    hipBelowKnee: hipMidY > kneeMidY,
+    live: {
+      phase,
+      rep_count: repCount,
+      knee_angle: Number(kneeAngle.toFixed(2)),
+      hip_angle: Number(hipAngle.toFixed(2)),
+      torso_angle: Number(torsoAngle.toFixed(2)),
+      shin_angle: Number(shinAngle.toFixed(2)),
+      hip_below_knee: hipMidY > kneeMidY,
+      tempo_ms: Math.round(now - phaseStartTime),
+    },
+  };
+}
+
+function mean(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function stddev(values) {
+  if (values.length < 2) return null;
+  const avg = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+// ============================================================
+// PHASE DETECTION
+// ============================================================
+
+const Phase = { STANDING: 'standing', DESCENDING: 'descending', BOTTOM: 'bottom', ASCENDING: 'ascending' };
+
+class PhaseDetector {
+  constructor() { this.phase = Phase.STANDING; this.angleHistory = []; this.wasAtBottom = false; this.repComplete = false; }
+
+  update(kneeAngle) {
+    this.repComplete = false;
+    this.angleHistory.push(kneeAngle);
+    if (this.angleHistory.length > 8) this.angleHistory.shift();
+    const v = this.getVelocity();
+
+    switch (this.phase) {
+      case Phase.STANDING:
+        if (kneeAngle < CONFIG.standingAngle && v < -CONFIG.angleVelocityThreshold) this.phase = Phase.DESCENDING;
+        break;
+      case Phase.DESCENDING:
+        if (kneeAngle <= CONFIG.bottomAngle || (Math.abs(v) < CONFIG.angleVelocityThreshold && kneeAngle < CONFIG.standingAngle - 15))
+          { this.phase = Phase.BOTTOM; this.wasAtBottom = true; }
+        else if (kneeAngle >= CONFIG.standingAngle) this.phase = Phase.STANDING;
+        break;
+      case Phase.BOTTOM:
+        if (v > CONFIG.angleVelocityThreshold) this.phase = Phase.ASCENDING;
+        else if (v < -CONFIG.angleVelocityThreshold) this.phase = Phase.DESCENDING;
+        break;
+      case Phase.ASCENDING:
+        if (kneeAngle >= CONFIG.standingAngle) {
+          this.phase = Phase.STANDING;
+          if (this.wasAtBottom) { this.repComplete = true; this.wasAtBottom = false; }
+        } else if (v < -CONFIG.angleVelocityThreshold * 1.5) this.phase = Phase.DESCENDING;
+        break;
+    }
+    return { phase: this.phase, repComplete: this.repComplete };
+  }
+
+  getVelocity() {
+    if (this.angleHistory.length < 3) return 0;
+    const r = this.angleHistory.slice(-3);
+    return (r[r.length - 1] - r[0]) / (r.length - 1);
+  }
+}
+
+// ============================================================
+// FORM CHECKER
+// ============================================================
+
+class FormChecker {
+  checkDepth(kneeAngle, phase) {
+    if (phase !== Phase.BOTTOM) return null;
+    return kneeAngle > CONFIG.depthAngle
+      ? { id: 'shallow', type: 'warn', text: 'Go deeper — break parallel' }
+      : { id: 'depth-ok', type: 'good', text: 'Good depth' };
+  }
+  checkKneeValgus(landmarks, phase) {
+    if (phase !== Phase.DESCENDING && phase !== Phase.BOTTOM) return null;
+    const kw = Math.abs(landmarks[LM.LEFT_KNEE].x - landmarks[LM.RIGHT_KNEE].x);
+    const aw = Math.abs(landmarks[LM.LEFT_ANKLE].x - landmarks[LM.RIGHT_ANKLE].x);
+    if (aw > 0.01 && kw / aw < CONFIG.valgusRatio)
+      return { id: 'valgus', type: 'bad', text: 'Knees caving — push them out' };
+    return null;
+  }
+  checkTorsoLean(torsoAngle, phase) {
+    if (phase === Phase.STANDING) return null;
+    return torsoAngle > CONFIG.torsoLeanAngle
+      ? { id: 'lean', type: 'warn', text: 'Too much forward lean' }
+      : null;
+  }
+}
+
+// ============================================================
+// FEEDBACK ENGINE
+// ============================================================
+
+class FeedbackEngine {
+  constructor() { this.cooldowns = new Map(); this.lastAudioTime = 0; }
+
+  process(checks) {
+    const now = performance.now();
+    const results = [];
+    for (const c of checks) {
+      if (!c) continue;
+      const last = this.cooldowns.get(c.id) || 0;
+      if (now - last < CONFIG.feedbackCooldownMs) continue;
+      results.push(c);
+      this.cooldowns.set(c.id, now);
+      if (c.type !== 'good' && now - this.lastAudioTime > CONFIG.audioCooldownMs) {
+        this.speak(c.text); this.lastAudioTime = now;
+      }
+    }
+    return results;
+  }
+
+  processRepComplete(n) {
+    const now = performance.now();
+    if (now - this.lastAudioTime > CONFIG.audioCooldownMs) { this.speak(`Rep ${n}`); this.lastAudioTime = now; }
+    return { id: 'rep', type: 'good', text: `Nice rep! (${n})` };
+  }
+
+  speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.15; u.pitch = 0.9; u.volume = 0.75;
+    window.speechSynthesis.speak(u);
+  }
+}
+
+// ============================================================
+// GEMMA WEBSOCKET CLIENT
+// ============================================================
+
+class GemmaClient {
+  constructor() {
+    this.ws = null;
+    this.connected = false;
+    this.lastCallTime = 0;
+    this.onFeedback = null;
+  }
+
+  connect() {
+    try {
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      this.ws = new WebSocket(`${protocol}://${location.host}/ws/coach`);
+      this.ws.onopen = () => {
+        this.connected = true;
+        CONFIG.gemmaEnabled = true;
+        document.getElementById('coach-model-status').textContent = '● Local coach connected';
+        document.getElementById('coach-model-status').className = 'active';
+      };
+      this.ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (this.onFeedback) this.onFeedback(data);
+      };
+      this.ws.onclose = () => {
+        this.connected = false;
+        CONFIG.gemmaEnabled = false;
+        document.getElementById('coach-model-status').textContent = '○ Local coach disconnected';
+        document.getElementById('coach-model-status').className = 'pending';
+      };
+      this.ws.onerror = () => { this.connected = false; };
+    } catch (e) {
+      console.log('Gemma WS not available — using rule-based fallback');
+    }
+  }
+
+  sendSignals(snapshot) {
+    if (!this.connected || !this.ws) return;
+    const now = performance.now();
+    if (now - this.lastCallTime < CONFIG.gemmaCallIntervalMs) return;
+    this.lastCallTime = now;
+    this.ws.send(JSON.stringify(snapshot));
+  }
+}
+
+// ============================================================
+// RENDERER
+// ============================================================
+
+class Renderer {
+  constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); }
+  clear() { this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); }
+
+  drawSkeleton(landmarks, jointColors = {}) {
+    const ctx = this.ctx;
+    const w = this.canvas.width, h = this.canvas.height;
+
+    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (const [i, j] of SKELETON_CONNECTIONS) {
+      const a = landmarks[i], b = landmarks[j];
+      if (!a || !b || a.visibility < CONFIG.confidenceThreshold || b.visibility < CONFIG.confidenceThreshold) continue;
+      const grad = ctx.createLinearGradient(a.x * w, a.y * h, b.x * w, b.y * h);
+      grad.addColorStop(0, jointColors[i] || 'rgba(0,212,255,0.6)');
+      grad.addColorStop(1, jointColors[j] || 'rgba(0,212,255,0.6)');
+      ctx.strokeStyle = grad;
+      ctx.beginPath(); ctx.moveTo(a.x * w, a.y * h); ctx.lineTo(b.x * w, b.y * h); ctx.stroke();
+    }
+
+    for (let i = 0; i < landmarks.length; i++) {
+      const l = landmarks[i];
+      if (!l || l.visibility < CONFIG.confidenceThreshold) continue;
+      const color = jointColors[i] || 'rgba(0,212,255,0.9)';
+      const isKey = [11,12,23,24,25,26,27,28].includes(i);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(l.x * w, l.y * h, isKey ? 6 : 4, 0, Math.PI * 2); ctx.fill();
+      if (isKey) {
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(l.x * w, l.y * h, 9, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+  }
+
+  drawAngleLabel(joint, angle) {
+    const ctx = this.ctx;
+    ctx.font = '600 13px monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.round(angle)}°`, joint.x * this.canvas.width, joint.y * this.canvas.height - 14);
+  }
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+
+const $ = id => document.getElementById(id);
+
+function updateStats(fps, avgConf, gatePass) {
+  $('val-fps').textContent = Math.round(fps);
+  $('val-conf').textContent = (avgConf * 100).toFixed(0) + '%';
+  $('val-gate').textContent = gatePass ? 'PASS' : 'DROP';
+  $('dot-fps').className = 'stat-dot' + (fps < 15 ? ' bad' : fps < 25 ? ' warn' : '');
+  $('dot-conf').className = 'stat-dot' + (avgConf < 0.5 ? ' bad' : avgConf < 0.7 ? ' warn' : '');
+  $('dot-gate').className = 'stat-dot' + (gatePass ? '' : ' bad');
+}
+
+function updateNetStatus() {
+  const online = navigator.onLine;
+  $('val-net').textContent = online ? 'ONLINE' : 'OFFLINE';
+  $('val-net').className = 'stat-value ' + (online ? 'online' : 'offline-ok');
+  $('dot-net').className = 'stat-dot'; // always green — we don't need internet
+}
+
+function updateAngles(k, h, t) {
+  $('val-knee').textContent = Math.round(k) + '°';
+  $('val-hip').textContent = Math.round(h) + '°';
+  $('val-torso').textContent = Math.round(t) + '°';
+}
+
+function updatePhase(phase) {
+  document.querySelectorAll('.phase-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.phase === phase);
+  });
+}
+
+let feedbackTimeout = null;
+function updateFeedback(messages) {
+  if (!messages.length) return;
+  const panel = $('feedback-panel');
+  panel.innerHTML = '';
+  for (const msg of messages) {
+    const div = document.createElement('div');
+    div.className = `feedback-msg ${msg.type}`;
+    div.textContent = msg.text;
+    panel.appendChild(div);
+  }
+  clearTimeout(feedbackTimeout);
+  feedbackTimeout = setTimeout(() => { panel.innerHTML = ''; }, 2500);
+}
+
+function updateSetupCheck(id, passed, label = passed ? 'PASS' : 'FAIL') {
+  const node = $(id);
+  node.className = `setup-item ${passed ? 'pass' : 'warn'}`;
+  node.querySelector('.setup-item-state').textContent = label;
+}
+
+function updateSetupPanel(analysis, state) {
+  updateSetupCheck('setup-head', analysis.checks.head);
+  updateSetupCheck('setup-feet', analysis.checks.feet);
+  updateSetupCheck('setup-distance', analysis.checks.distance, analysis.checks.distance ? 'PASS' : 'ADJUST');
+  updateSetupCheck('setup-center', analysis.checks.center, analysis.checks.center ? 'PASS' : 'ADJUST');
+  updateSetupCheck('setup-view', analysis.checks.view, analysis.checks.view ? 'PASS' : 'ROTATE');
+  $('setup-instruction').textContent = analysis.instruction;
+  $('setup-status').textContent = state.locked
+    ? `Fix framing. Auto tracking in ${((CONFIG.setupReadyMs - state.readyMs) / 1000).toFixed(1)}s`
+    : 'Tracking live';
+}
+
+function updateRecorderPanel(recorder) {
+  const metrics = recorder.getMetrics();
+  $('record-frames').textContent = metrics.frames;
+  $('record-reps').textContent = metrics.reps;
+  $('record-gate-pass').textContent = metrics.gatePassRate == null ? '—' : `${(metrics.gatePassRate * 100).toFixed(0)}%`;
+  $('record-status').textContent = recorder.active
+    ? 'Recorder running'
+    : (metrics.frames ? (metrics.videoReady ? 'Recorder ready' : 'Finalizing video...') : 'Recorder idle');
+  $('record-start-btn').disabled = recorder.active;
+  $('record-stop-btn').disabled = !recorder.active;
+  $('record-export-btn').disabled = recorder.active || !metrics.frames || !metrics.videoReady;
+}
+
+// ============================================================
+// MAIN
+// ============================================================
+
+async function main() {
+  const statusEl = $('load-status');
+
+  // Network status indicator
+  updateNetStatus();
+  window.addEventListener('online', updateNetStatus);
+  window.addEventListener('offline', updateNetStatus);
+
+  // Load MediaPipe — ALL FROM LOCAL SERVER
+  statusEl.textContent = 'Loading WASM runtime from disk...';
+  const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
+
+  statusEl.textContent = 'Loading pose model from disk (~4MB)...';
+  const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "/models/pose_landmarker_lite.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numPoses: 1,
+  });
+
+  statusEl.textContent = 'Requesting camera...';
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false,
+    });
+  } catch (e) {
+    $('loading').classList.add('hidden');
+    $('error-msg').textContent = e.name === 'NotAllowedError'
+      ? 'Camera access denied. Allow camera and reload.'
+      : `Camera error: ${e.message}`;
+    $('error-overlay').classList.add('visible');
+    return;
+  }
+
+  const video = $('video');
+  video.srcObject = stream;
+  await new Promise(r => { video.onloadedmetadata = r; });
+  await video.play();
+
+  $('loading').classList.add('hidden');
+  $('start-screen').classList.add('visible');
+
+  await new Promise(r => $('start-btn').addEventListener('click', r, { once: true }));
+  $('start-screen').classList.remove('visible');
+  $('main').classList.add('active');
+
+  const canvas = $('overlay');
+  const renderer = new Renderer(canvas);
+  function resize() { canvas.width = $('video-container').clientWidth; canvas.height = $('video-container').clientHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Init pipeline
+  const smoother = new LandmarkSmoother(CONFIG.emaAlpha);
+  const phaseDetector = new PhaseDetector();
+  const formChecker = new FormChecker();
+  const decisionGate = new DecisionGate(CONFIG.decisionPersistMs);
+  const feedbackEngine = new FeedbackEngine();
+  const recorder = new SessionRecorder();
+  const setupGate = new SetupGate();
+
+  // Try connecting to Gemma WebSocket
+  const gemma = new GemmaClient();
+  if (CONFIG.gemmaAutoConnect) gemma.connect();
+  gemma.onFeedback = (data) => {
+    if (data.feedback && data.severity !== 'info') {
+      updateFeedback([{ id: 'gemma', type: data.severity || 'info', text: data.feedback }]);
+      if (data.speak) feedbackEngine.speak(data.feedback);
+    }
+  };
+
+  let repCount = 0;
+  let repModeActive = false;
+  let lastFrameTime = performance.now();
+  let fpsHistory = [];
+  let depthHistory = [];
+  let lastPhase = Phase.STANDING;
+  let phaseStartTime = performance.now();
+  let phaseDurations = {};
+  let currentBottomMin = null;
+  let repStartTime = performance.now();
+
+  const keyJoints = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER];
+
+  $('record-start-btn').addEventListener('click', () => {
+    recorder.start({
+      cameraAngle: RECORDING_PROFILE.cameraAngle,
+      cameraHeight: RECORDING_PROFILE.cameraHeight,
+    }, stream);
+    updateRecorderPanel(recorder);
+  });
+  $('record-stop-btn').addEventListener('click', () => {
+    recorder.stop();
+    updateRecorderPanel(recorder);
+  });
+  $('record-reset-btn').addEventListener('click', () => {
+    recorder.reset();
+    updateRecorderPanel(recorder);
+  });
+  $('record-export-btn').addEventListener('click', () => {
+    if (recorder.export()) {
+      updateFeedback([{ id: 'export', type: 'good', text: 'Session JSON and video exported' }]);
+    }
+  });
+  updateRecorderPanel(recorder);
+
+  function processFrame() {
+    const now = performance.now();
+    const dt = now - lastFrameTime;
+    lastFrameTime = now;
+    fpsHistory.push(1000 / dt);
+    if (fpsHistory.length > 30) fpsHistory.shift();
+    const fps = fpsHistory.reduce((a, b) => a + b) / fpsHistory.length;
+
+    const result = poseLandmarker.detectForVideo(video, now);
+    renderer.clear();
+
+    if (!result.landmarks || result.landmarks.length === 0) {
+      repModeActive = false;
+      updateStats(fps, 0, false);
+      recorder.record({
+        timestamp_ms: Math.round(now),
+        camera_angle: RECORDING_PROFILE.cameraAngle,
+        camera_height: RECORDING_PROFILE.cameraHeight,
+        gate_pass: false,
+        confidence_avg: 0,
+        confidence_min: 0,
+        phase: 'no_pose',
+        rep_number: repCount,
+        rep_mode_active: repModeActive,
+        setup: {
+          head_visible: false,
+          feet_visible: false,
+          centered: false,
+          side_view: false,
+        },
+      });
+      updateRecorderPanel(recorder);
+      requestAnimationFrame(processFrame);
+      return;
+    }
+
+    const raw = result.landmarks[0];
+    const confs = keyJoints.map(i => raw[i]?.visibility ?? 0);
+    const avgConf = confs.reduce((a, b) => a + b) / confs.length;
+    const minConf = Math.min(...confs);
+    const gatePass = minConf >= CONFIG.confidenceThreshold;
+    updateStats(fps, avgConf, gatePass);
+
+    const setupAnalysis = setupGate.evaluate(raw, video.videoWidth || 1280, video.videoHeight || 720);
+    const setupState = setupGate.update(setupAnalysis, now);
+    updateSetupPanel(setupAnalysis, setupState);
+    repModeActive = !setupState.locked;
+
+    const landmarks = smoother.update(raw);
+    const provisionalMetrics = computeLiveMetrics(landmarks, phaseDetector.phase, repCount, now, phaseStartTime);
+
+    if (!gatePass) {
+      renderer.drawSkeleton(raw, {});
+      recorder.record({
+        timestamp_ms: Math.round(now),
+        camera_angle: RECORDING_PROFILE.cameraAngle,
+        camera_height: RECORDING_PROFILE.cameraHeight,
+        gate_pass: false,
+        confidence_avg: Number(avgConf.toFixed(4)),
+        confidence_min: Number(minConf.toFixed(4)),
+        phase: phaseDetector.phase,
+        rep_number: repCount,
+        rep_mode_active: repModeActive,
+        setup: {
+          head_visible: setupAnalysis.checks.head,
+          feet_visible: setupAnalysis.checks.feet,
+          centered: setupAnalysis.checks.center,
+          side_view: setupAnalysis.checks.view,
+        },
+        live: provisionalMetrics ? { ...provisionalMetrics.live, provisional: true } : null,
+      });
+      updateRecorderPanel(recorder);
+      requestAnimationFrame(processFrame);
+      return;
+    }
+
+    // Angles
+    const { lKnee, rKnee, kneeAngle, lHip, rHip, hipAngle, torsoAngle, shinAngle, hipBelowKnee, live } = provisionalMetrics || {};
+    if (!provisionalMetrics) {
+      requestAnimationFrame(processFrame);
+      return;
+    }
+    updateAngles(kneeAngle, hipAngle, torsoAngle);
+
+    if (!repModeActive) {
+      renderer.drawSkeleton(landmarks, {});
+      renderer.drawAngleLabel(landmarks[LM.LEFT_KNEE], lKnee);
+      renderer.drawAngleLabel(landmarks[LM.RIGHT_KNEE], rKnee);
+      requestAnimationFrame(processFrame);
+      return;
+    }
+
+    if (phaseDetector.phase === Phase.BOTTOM || currentBottomMin == null || kneeAngle < currentBottomMin.knee_angle) {
+      currentBottomMin = {
+        knee_angle: Number(kneeAngle.toFixed(2)),
+        knee_angle_left: Number(lKnee.toFixed(2)),
+        knee_angle_right: Number(rKnee.toFixed(2)),
+        hip_angle: Number(hipAngle.toFixed(2)),
+        torso_angle: Number(torsoAngle.toFixed(2)),
+      };
+    }
+
+    // Phase
+    const { phase, repComplete } = phaseDetector.update(kneeAngle);
+    updatePhase(phase);
+
+    // Track phase durations for Gemma
+    if (phase !== lastPhase) {
+      phaseDurations[lastPhase] = now - phaseStartTime;
+      phaseStartTime = now;
+      lastPhase = phase;
+      if (phase === Phase.DESCENDING) repStartTime = now;
+    }
+
+    // Track depth history
+    if (phase === Phase.BOTTOM) {
+      if (depthHistory.length === 0 || depthHistory[depthHistory.length - 1] !== Math.round(kneeAngle)) {
+        depthHistory.push(Math.round(kneeAngle));
+        if (depthHistory.length > 20) depthHistory.shift();
+      }
+    }
+
+    if (repComplete) {
+      repCount++;
+      $('rep-count').textContent = repCount;
+      updateFeedback([feedbackEngine.processRepComplete(repCount)]);
+      recorder.addRepSummary({
+        rep_number: repCount,
+        bottom_frame: currentBottomMin,
+        tempo: {
+          descent_ms: Math.round(phaseDurations[Phase.DESCENDING] || 0),
+          bottom_ms: Math.round(phaseDurations[Phase.BOTTOM] || 0),
+          ascent_ms: Math.round(phaseDurations[Phase.ASCENDING] || 0),
+          total_ms: Math.round(now - repStartTime),
+        },
+      });
+      currentBottomMin = null;
+      updateRecorderPanel(recorder);
+    }
+
+    const kw = Math.abs(landmarks[LM.LEFT_KNEE].x - landmarks[LM.RIGHT_KNEE].x);
+    const aw = Math.abs(landmarks[LM.LEFT_ANKLE].x - landmarks[LM.RIGHT_ANKLE].x);
+    const kneeValgusRatio = aw > 0.01 ? kw / aw : null;
+
+    recorder.record({
+      timestamp_ms: Math.round(now),
+      camera_angle: RECORDING_PROFILE.cameraAngle,
+      camera_height: RECORDING_PROFILE.cameraHeight,
+      gate_pass: true,
+      confidence_avg: Number(avgConf.toFixed(4)),
+      confidence_min: Number(minConf.toFixed(4)),
+      knee_angle: Number(kneeAngle.toFixed(2)),
+      knee_angle_left: Number(lKnee.toFixed(2)),
+      knee_angle_right: Number(rKnee.toFixed(2)),
+      hip_angle: Number(hipAngle.toFixed(2)),
+      torso_angle: Number(torsoAngle.toFixed(2)),
+      knee_valgus_ratio: kneeValgusRatio == null ? null : Number(kneeValgusRatio.toFixed(4)),
+      left_right_knee_diff: Number(Math.abs(lKnee - rKnee).toFixed(2)),
+      phase,
+      rep_number: repCount,
+      rep_complete: repComplete,
+      rep_mode_active: repModeActive,
+      setup: {
+        head_visible: setupAnalysis.checks.head,
+        feet_visible: setupAnalysis.checks.feet,
+        centered: setupAnalysis.checks.center,
+        side_view: setupAnalysis.checks.view,
+      },
+      live,
+    });
+    updateRecorderPanel(recorder);
+
+    // Form checks
+    const checks = [
+      formChecker.checkDepth(kneeAngle, phase),
+      formChecker.checkKneeValgus(landmarks, phase),
+      formChecker.checkTorsoLean(torsoAngle, phase),
+    ].filter(Boolean);
+
+    for (const c of checks) decisionGate.update(c.id, true);
+    for (const id of ['shallow', 'valgus', 'lean', 'depth-ok']) {
+      if (!checks.find(c => c.id === id)) decisionGate.update(id, false);
+    }
+
+    const confirmed = checks.filter(c => decisionGate.isConfirmed(c.id));
+
+    if (!repComplete && confirmed.length > 0) {
+      const fb = feedbackEngine.process(confirmed);
+      if (fb.length > 0) updateFeedback(fb);
+    }
+
+    // Send signals to Gemma on phase transitions or periodically
+    if (gemma.connected) {
+      gemma.sendSignals({
+        phase,
+        rep_number: repCount,
+        knee_angle: Math.round(kneeAngle * 10) / 10,
+        hip_angle: Math.round(hipAngle * 10) / 10,
+        torso_angle: Math.round(torsoAngle * 10) / 10,
+        knee_valgus_ratio: kneeValgusRatio != null ? Math.round(kneeValgusRatio * 100) / 100 : 1,
+        depth_history: depthHistory.slice(-8),
+        phase_durations_ms: { ...phaseDurations },
+      });
+    }
+
+    // Render
+    const colors = {};
+    const good = 'rgba(0,232,123,0.9)', warn = 'rgba(255,210,63,0.9)', bad = 'rgba(255,71,87,0.9)';
+    for (const idx of keyJoints) colors[idx] = 'rgba(0,212,255,0.7)';
+
+    if (decisionGate.isConfirmed('valgus')) { colors[LM.LEFT_KNEE] = bad; colors[LM.RIGHT_KNEE] = bad; }
+    if (decisionGate.isConfirmed('lean')) { colors[LM.LEFT_SHOULDER] = warn; colors[LM.RIGHT_SHOULDER] = warn; }
+    if (decisionGate.isConfirmed('shallow')) { colors[LM.LEFT_KNEE] = warn; colors[LM.RIGHT_KNEE] = warn; colors[LM.LEFT_HIP] = warn; colors[LM.RIGHT_HIP] = warn; }
+    if (decisionGate.isConfirmed('depth-ok')) { colors[LM.LEFT_KNEE] = good; colors[LM.RIGHT_KNEE] = good; colors[LM.LEFT_HIP] = good; colors[LM.RIGHT_HIP] = good; }
+
+    renderer.drawSkeleton(landmarks, colors);
+    renderer.drawAngleLabel(landmarks[LM.LEFT_KNEE], lKnee);
+    renderer.drawAngleLabel(landmarks[LM.RIGHT_KNEE], rKnee);
+
+    requestAnimationFrame(processFrame);
+  }
+
+  requestAnimationFrame(processFrame);
+}
+
+main().catch(err => {
+  console.error('Fatal:', err);
+  document.getElementById('load-status').textContent = `Error: ${err.message}`;
+});
+</script>
+</body>
 </html>

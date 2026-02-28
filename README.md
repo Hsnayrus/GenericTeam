@@ -1,40 +1,106 @@
-# Squat Coach — Fully Local, Fully Offline
+# Squat Coach — On-Device Visual Coaching Agent
 
-A realtime squat form coach that runs **entirely on your device**. No cloud, no API calls, no internet required after initial setup.
+A realtime squat coach designed to run on-device end to end:
+- visual input from the webcam
+- local pose estimation
+- deterministic squat-state extraction
+- a fine-tuned local Gemma model for coaching and agentic decisions
 
-## Architecture
+The target demo is not just "AI text over pose data." The target demo is:
+- visual input
+- on-device reasoning
+- private realtime feedback
+- agentic behavior across setup, calibration, live cues, and set summaries
 
-```text
+## Product Direction
+
+The current design direction is:
+
+1. `setup_coach`
+- Separate from live coaching
+- Handles framing/readiness only
+- Example issues: head not visible, feet not visible, off-center
+
+2. `live_cue_side`
+- Side-view only
+- Uses a compact structured state instead of raw landmarks
+- Priorities: `safety`, `depth`, `knees`, `encouragement`
+
+3. `set_summary`
+- Optional higher-level summary after a set
+- Uses rep trends and fatigue metrics
+
+## High-Level Architecture
+
+```
 Webcam
    ↓
-MediaPipe Pose Lite (WASM+WebGL, in-browser)
+MediaPipe Pose Lite (on-device)
    ↓
-Confidence Gating (drop frames where joints < 0.5 visibility)
+Landmark Filtering + Confidence Gating
    ↓
-EMA Smoothing (α=0.7 on landmark coordinates)
+Deterministic State Extraction
    ↓
-Angle Computation (knee, hip, torso — averaged bilateral)
+Compact Squat State
    ↓
-Phase Detection (standing → descent → bottom → ascent state machine)
+Local Gemma (fine-tuned)
    ↓
-Form Checks (depth, knee valgus, forward lean — phase-aware)
-   ↓
-Decision Gating (250ms persistence before any alert fires)
-   ↓
-Feedback Engine (visual overlay + speech synthesis)
-   ↓
-[Optional] Gemma 2B via WebSocket (fine-tuned coaching model)
+Agentic Coaching Output
 ```
 
-## What runs where
+Where each layer fits:
+- MediaPipe = eyes
+- State extraction = biomechanics interpreter
+- Gemma = coaching brain
+- Agent loop = decides what to do next
+
+## Why On-Device
+
+- Privacy: workout video never leaves the machine
+- Latency: mid-rep feedback is only useful if it is local and fast
+- Reliability: works offline in a garage, basement, or gym
+- Cost: no per-inference API calls at runtime
+- Personalization: local model + session calibration can adapt to the user
+
+## What Runs Where
 
 | Component | Runs in | Notes |
 |---|---|---|
-| Pose estimation | Browser (WASM+WebGL) | ~5-15ms/frame, MediaPipe Lite |
-| Signal processing | Browser (JS) | EMA, angles, phase detection |
-| Rule-based coaching | Browser (JS) | Hardcoded form checks |
-| Gemma 2B coaching | Local Python server (MLX) | Optional, replaces hardcoded rules |
-| UI + audio | Browser | Canvas overlay + Web Speech API |
+| Pose estimation | Browser (WASM+WebGL) | MediaPipe Pose |
+| State extraction | Browser (JS) | Angles, phase, rep metrics, setup gate |
+| Recording/export | Browser (JS) | Exports session JSON today |
+| Local coaching model | Local runtime / VM | Gemma via Ollama for evals today |
+| UI + audio | Browser | Overlay + speech |
+
+Recommended split:
+- local machine: browser or local app for webcam capture and UI
+- local or VM runtime: model inference, data processing, and evals
+- no internet dependency after models and assets are installed
+
+For the current project split:
+- [local app integration](/Users/jwalinshah/projects/squat-coach-local/README.md): browser recorder, UI, and `/ws/coach` integration work
+- offline training and eval box: a local machine or VM with Ollama, exported JSON, and recorded `.webm` sessions
+
+## Current Status
+
+Working now:
+- local webcam pose pipeline
+- setup gate
+- automatic setup-to-tracking handoff
+- rep counting
+- angle computation
+- session JSON + local video export
+- Gemini teacher dataset generation
+- evaluation harness for the new teacher schema
+
+Not done yet:
+- final side-view feature schema cleanup in the recorder
+- fine-tuned Gemma student model
+- audited labeled dataset from real sessions
+
+Current collection requirement:
+- use a floor-mounted side-view camera setup
+- the app now auto-arms tracking when framing is good enough
 
 ## Quick Start
 
@@ -42,7 +108,8 @@ Feedback Engine (visual overlay + speech synthesis)
 # 1. Clone and enter directory
 cd squat-coach-local
 
-# 2. Install JS dependency once if needed
+# 2. Install Python and JS dependencies
+python3 -m pip install -r requirements.txt
 npm install
 
 # 3. Run setup (copies MediaPipe assets from node_modules and downloads the pose model)
@@ -58,10 +125,193 @@ python3 server.py
 # 6. Disconnect from internet — everything still works
 ```
 
+## Branch Split
+
+Use these branches for separation of concerns:
+- `codex/squat-coach-integration-v1` for app and pipeline integration
+- `train/squat-coach-v1` for VM-only data cleaning, evals, and fine-tuning work
+
+Suggested flow:
+1. land browser and pipeline changes on `codex/squat-coach-integration-v1`
+2. fetch that branch on the VM after it is pushed
+3. branch `train/squat-coach-v1` from it for offline experiments and generated artifacts
+
+## Locked Baseline Thresholds
+
+The current baseline assumes these locked live-coaching thresholds:
+- depth target: `knee_angle <= 100`
+- torso warning: `torso_angle >= 45`
+- knees in warning: `knee_valgus_ratio < 0.82`
+
+Browser rules, the baseline summary script, and the local websocket fallback should stay aligned with these values unless we intentionally revise the policy.
+
+## VM Setup
+
+Use the VM as the offline training and eval box.
+
+```bash
+ssh <your-vm-user>@<your-vm-host>
+git clone https://github.com/Hsnayrus/GenericTeam.git
+cd GenericTeam
+git fetch --all
+git checkout codex/squat-coach-integration-v1
+git checkout -b train/squat-coach-v1
+
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -U pip
+pip install -r requirements.txt
+pip install -U google-genai
+
+npm install
+```
+
+If Ollama is not already installed on the VM, install it first, then start it and pull the eval models:
+
+```bash
+ollama serve
+```
+
+In another shell:
+
+```bash
+ollama pull gemma3:1b
+ollama pull gemma3:4b
+```
+
+Put exported session assets on the VM under a data folder such as:
+
+```bash
+mkdir -p data/raw_videos data/raw_sessions data/results
+
+scp /path/to/session.webm <your-vm-user>@<your-vm-host>:~/GenericTeam/data/raw_videos/
+scp /path/to/session.json <your-vm-user>@<your-vm-host>:~/GenericTeam/data/raw_sessions/
+```
+
+Set the Gemini teacher key on the VM before running teacher-data generation:
+
+```bash
+export GEMINI_API_KEY=YOUR_KEY
+```
+
+Persist it in the VM shell profile only if that machine is dedicated to this project.
+
+Recommended teacher model choice:
+- default to `gemini-2.5-pro` for stable dataset generation and rep review
+- test `gemini-3-pro-preview` on a small audited slice only if you want to compare preview quality
+
+## Recording Data
+
+Right now the app is good enough to start a pilot collection pass.
+
+Workflow:
+1. Start the app
+2. Put the camera at floor height in a side view
+3. Stand in frame and let the setup gate turn green
+4. Tracking starts automatically when framing is stable
+5. Click `Start Rec`
+6. Perform a short set
+7. Click `Stop Rec`
+8. Click `Export JSON`
+
+What gets saved today:
+- per-frame pose-derived metrics
+- setup state
+- rep summaries
+- session metadata
+- local recorded video when the browser supports `MediaRecorder`
+
+Recommended collection setup:
+- floor-mounted camera
+- full-body side view
+- keep the camera fixed for the full session
+
+## Recommended Data Plan
+
+Use real data first.
+
+Why:
+- real camera geometry
+- real body proportions
+- real tracking noise
+- real squat patterns
+
+Use synthetic data later only to fill gaps.
+
+Suggested collection plan:
+1. Record clean side-view sets
+2. Record intentional shallow reps
+3. Record intentional forward-lean reps
+4. Record intentional knees-in reps
+5. Repeat across multiple users
+
+For labeling:
+- use the video to judge the rep
+- use the pose JSON to extract the structured training features
+
+Humans should label from video, not from raw pose numbers alone.
+
+## Target Live Feature Schema
+
+The simplified `live_cue_side` dataset should use only these 7 features:
+
+1. `phase`
+2. `rep_count`
+3. `knee_angle`
+4. `hip_angle`
+5. `torso_angle`
+6. `shin_angle`
+7. `hip_below_knee`
+
+Separate setup-only fields:
+- `head_visible`
+- `feet_visible`
+- `centered`
+- `gate_pass`
+
+Interpretation:
+- `setup_coach` dataset = framing/readiness only
+- `live_cue_side` dataset = only rows where `gate_pass = true`
+
+## Calibration Strategy
+
+To keep the system simple and robust:
+- use one fixed side-view camera setup
+- calibrate per session instead of trying to solve all viewpoint variation
+
+Simple calibration flow:
+1. Standing baseline for 2-3 seconds
+2. Two or three easy squats
+3. Set personalized thresholds for:
+- depth target
+- torso warning threshold
+
+This matters more than trying to hardcode one ideal squat angle for every body type.
+
+## Agent Behavior
+
+The intended local agent loop is:
+
+1. `setup_coach`
+- asks for better framing if needed
+
+2. `calibrate`
+- observes a few initial reps
+- sets thresholds for the current user/session
+
+3. `live_cue`
+- gives one concise actionable cue during the set
+
+4. `set_summary`
+- summarizes rep quality and fatigue trends
+
+This is the "agentic" part of the project:
+- it does not just classify a frame
+- it chooses the next useful coaching action
+
 ## Setup Details
 
 `setup.sh` prepares these files once:
-
 - MediaPipe WASM runtime (~3MB) → `static/mediapipe/wasm/`
 - MediaPipe JS bundle → `static/mediapipe/vision_bundle.mjs`
 - Pose Landmarker Lite model (~4MB) → `models/`
@@ -73,11 +323,15 @@ After setup, **zero network requests** are made at runtime.
 
 ## Camera Setup
 
-**Best angle: ~45° from the side**, about 6-8 feet away, full body in frame.
+Current target:
+- floor-mounted side view only for live coaching
+- full body visible
+- fixed camera position
+- consistent distance
 
-- Side view = best for knee/hip angle accuracy
-- Front view = best for knee valgus detection
-- 45° = good compromise for both
+The current product direction is no longer "mixed front + side." It is:
+- `setup_coach` handles framing
+- `live_cue_side` handles squat coaching
 
 ## The "Unplug the Internet" Demo
 
@@ -89,55 +343,246 @@ After setup, **zero network requests** are made at runtime.
 6. Do more squats — **identical performance**
 7. Point to the HUD: NET shows OFFLINE, everything else green
 
-## Gemma 2B Integration (Coming)
+## Gemma Integration
 
-The WebSocket endpoint at `/ws/coach` is ready. When Gemma is connected:
+The WebSocket endpoint at `/ws/coach` exists, but true local Gemma integration is still pending.
 
-**Input** (sent on phase transitions):
+Target model role:
+- input = compact squat state, not raw pixels
+- output = coaching decision and phrasing
+- runtime = fully local
+
+Target input:
 
 ```json
 {
-  "phase": "bottom",
-  "rep_number": 4,
+  "phase": "bottom|descending|ascending|standing",
+  "rep_count": 4,
   "knee_angle": 108,
   "hip_angle": 72,
   "torso_angle": 41,
-  "knee_valgus_ratio": 0.79,
-  "depth_history": [94, 96, 101, 108],
-  "phase_durations_ms": {"descent": 820, "bottom": 340}
+  "shin_angle": 28,
+  "hip_below_knee": true
 }
 ```
 
-**Output** (coaching decision):
+Target output:
+```json
+{
+  "say": "Keep your chest up as you drive out of the bottom.",
+  "priority": "safety",
+  "ui": {"highlight": "torso", "show_checklist": false},
+  "cooldown_s": 3.0
+}
+```
+
+Why fine-tune Gemma instead of only using rules:
+- better phrasing
+- better prioritization across multiple metrics
+- can reason over rep history and fatigue trends
+- fits the on-device agent story for the hackathon
+
+## Teacher / Student Training Flow
+
+Use Gemini offline as the "teacher" to generate a labeled JSONL dataset, then fine-tune Gemma locally as the "student" for realtime coaching. This step is optional and separate from the runtime app.
+
+### Setup
+
+```bash
+python3 -m pip install -U google-genai
+export GEMINI_API_KEY="YOUR_KEY_HERE"
+```
+
+### Generate JSONL training data
+
+```bash
+python3 generate_gemini_dataset.py \
+  --count 200 \
+  --batch-size 50 \
+  --output data/gemini_teacher_dataset.jsonl \
+  --raw-output data/gemini_teacher_raw.json
+```
+
+What the script does:
+- Uses the squat-coach teacher prompt and schema described in `generate_gemini_dataset.py`
+- Calls Gemini in batches and asks for strict JSON only
+- Validates every example before it is accepted
+- Writes one JSON object per line for fine-tuning
+
+Current recommendation:
+- use real recorded data first
+- use Gemini later for language generation and synthetic gap-filling
+- do not let Gemini be the source of truth for squat quality
+
+Instead:
+- deterministic rubric = truth
+- Gemini = language teacher
+- Gemma = local student
+
+## Evaluation
+
+The repo now includes a schema-aligned evaluator:
+
+```bash
+python3 evaluate_coach_dataset.py --backend gold
+python3 evaluate_coach_dataset.py --backend rules
+python3 evaluate_coach_dataset.py --backend ollama --model gemma3:1b
+```
+
+What it measures today:
+- priority accuracy against labels
+- priority accuracy against deterministic policy
+- token overlap
+- response length constraints
+
+Current takeaway:
+- the dataset policy must be cleaned up before fine-tuning
+- base local Gemma is not good enough on the current mixed sample
+- rules currently beat base Gemma on policy consistency
+
+## Offline Session Workflow
+
+Once session JSON and `.webm` files are on the training machine, use this flow:
+
+### 1. Clean exported session JSON
+
+```bash
+python3 clean_offline_session.py \
+  --input data/raw_sessions/session.offline.json \
+  --output data/results/session.cleaned.json \
+  --min-confidence 0.3
+```
+
+### 2. Compare local models on one session
+
+```bash
+python3 compare_session_models.py \
+  --session-json data/results/session.cleaned.json \
+  --video data/raw_videos/session.webm \
+  --rep 3 \
+  --models gemma3:1b gemma3:4b \
+  --mode both \
+  --output data/results/session_compare.json
+```
+
+### 3. Summarize the session baseline against locked thresholds
+
+```bash
+python3 summarize_session_baseline.py \
+  --input data/results/session.cleaned.json \
+  --output data/results/session_baseline.json
+```
+
+### 4. Evaluate the structured dataset
+
+```bash
+python3 evaluate_coach_dataset.py --backend rules
+python3 evaluate_coach_dataset.py --backend ollama --model gemma3:1b
+python3 evaluate_coach_dataset.py --backend ollama --model gemma3:4b
+```
+
+### 5. Generate teacher data only if needed
+
+```bash
+export GEMINI_API_KEY=YOUR_KEY
+python3 generate_gemini_dataset.py \
+  --model gemini-2.5-pro \
+  --count 200 \
+  --batch-size 50 \
+  --output data/gemini_teacher_dataset.jsonl \
+  --raw-output data/gemini_teacher_raw.json
+```
+
+### 6. Review one rep with Gemini Pro from side-view frames
+
+```bash
+python3 review_rep_with_gemini.py \
+  --model gemini-2.5-pro \
+  --session-json data/results/session.cleaned.json \
+  --video data/raw_videos/session.webm \
+  --rep 3 \
+  --output data/results/gemini_rep_review.json
+```
+
+### Synthetic Side-View Video Generation With Google
+
+Use Veo when you want fake side-view squat clips for demos or offline experiments.
+
+```bash
+export GEMINI_API_KEY="YOUR_KEY_HERE"
+
+python3 generate_synthetic_squat_videos.py \
+  --count 4 \
+  --model veo-3.1-generate-preview \
+  --output-dir data/generated_videos
+```
+
+This writes:
+- generated `.mp4` clips under `data/generated_videos/`
+- `data/generated_videos/synthetic_squat_manifest.json` with the exact prompt, synthetic profile, and `mediaprose`
+
+If you want Gemini coaching without sending the videos, review the manifest prose only:
+
+```bash
+python3 review_synthetic_squat_profiles_with_gemini.py \
+  --manifest data/generated_videos/synthetic_squat_manifest.json \
+  --output data/results/synthetic_squat_reviews.json
+```
+
+The prose-only review script sends just the structured profile plus `mediaprose` to Gemini. It does not upload the generated videos.
+
+Equivalent `make` targets:
+
+```bash
+make clean-session RAW_SESSION=data/raw_sessions/session.offline.json
+make baseline-summary CLEAN_SESSION=data/results/session.cleaned.json
+make eval-rules
+make eval-ollama-1b
+make eval-ollama-4b
+make compare-session CLEAN_SESSION=data/results/session.cleaned.json SESSION_VIDEO=data/raw_videos/session.webm REP=3
+make review-rep CLEAN_SESSION=data/results/session.cleaned.json SESSION_VIDEO=data/raw_videos/session.webm REP=3
+make teacher-generate
+```
+
+## Immediate Next Steps
+
+1. Update the recorder/export pipeline to the final side-view schema
+2. Record real side-view sessions
+3. Split setup vs live datasets using `gate_pass`
+4. Label reps from video
+5. Build deterministic truth labels
+6. Fine-tune local Gemma on that structured dataset
+7. Reconnect the student model to `/ws/coach`
+
+Each JSONL row includes:
 
 ```json
 {
-  "feedback": "Depth degrading over last 4 reps — fatigue pattern. One more good one or rack it.",
-  "severity": "warn",
-  "speak": true
+  "id": "gemini-teacher-00001",
+  "source_model": "gemini-3-flash-preview",
+  "input": { "...": "structured squat state" },
+  "output": { "...": "strict coaching response" }
 }
 ```
 
-Why Gemma > hardcoded rules:
-
-- Tracks patterns across reps (fatigue detection)
-- Correlates multiple signals (lean + depth = compensation)
-- Adapts coaching style to experience level
-- Makes judgment calls about when to interrupt
-
-Why on-device:
-
-- Privacy (filming yourself exercising)
-- Latency (<100ms needed for mid-rep feedback)
-- Offline (garage gyms, basements)
-- Cost (no per-inference API charges)
+Use `--dry-run` to print the exact system instruction and user prompt without calling the API.
 
 ## File Structure
 
 ```
 squat-coach-local/
+├── requirements.txt                  # Python runtime deps for app and VM setup
+├── Makefile                          # Repeatable local/VM setup, baseline, and eval commands
 ├── setup.sh                          # One-time dependency download
 ├── server.py                         # FastAPI local server + Gemma WS endpoint
+├── clean_offline_session.py          # Clean exported offline session JSON
+├── compare_session_models.py         # Compare rules vs Ollama models on one session
+├── evaluate_coach_dataset.py         # Evaluate rules or Ollama against the coaching schema
+├── review_rep_with_gemini.py         # Gemini Pro teacher review for one rep from extracted frames
+├── summarize_session_baseline.py     # Quantify one cleaned session against locked thresholds
+├── generate_synthetic_data.py        # Local synthetic benchmark dataset
+├── generate_gemini_dataset.py        # Gemini teacher -> JSONL fine-tuning dataset
+├── benchmark_gemma.py                # Rules vs model benchmark harness
 ├── static/
 │   ├── index.html                    # Full app (pose + pipeline + UI)
 │   └── mediapipe/
