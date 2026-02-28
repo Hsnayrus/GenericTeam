@@ -1,0 +1,4 @@
+**/.venv
+**/genericteam-terraform-sa.json
+**/*.pem*
+
