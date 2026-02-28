@@ -11,7 +11,7 @@ SYSTEM_POSE = """You are a squat coach. You receive a compact side-view squat st
 Return strict JSON only with this schema:
 {
   "say": string,
-  "priority": "safety|depth|tempo|encouragement",
+  "priority": "safety|depth|knees|encouragement",
   "reason": string
 }
 Keep say to one short sentence. Focus on the highest-priority issue only."""
@@ -21,7 +21,7 @@ SYSTEM_VISUAL = """You are a squat coach looking at side-view squat images.
 Return strict JSON only with this schema:
 {
   "say": string,
-  "priority": "safety|depth|tempo|encouragement",
+  "priority": "safety|depth|knees|encouragement",
   "reason": string
 }
 Infer the most important issue visible in the images."""
@@ -92,8 +92,6 @@ def rules_decision(rep):
         return {"say": "Keep your chest up through the rep.", "priority": "safety", "reason": "torso angle is high"}
     if not rep["hip_below_knee"] or rep["knee_angle"] > 110:
         return {"say": "Sit a little deeper on the next rep.", "priority": "depth", "reason": "bottom depth is shallow"}
-    if rep["tempo"]["total_ms"] < 900:
-        return {"say": "Slow the rep down and stay controlled.", "priority": "tempo", "reason": "rep is moving too fast"}
     return {"say": "Good rep. Keep that shape.", "priority": "encouragement", "reason": "no major issue detected"}
 
 

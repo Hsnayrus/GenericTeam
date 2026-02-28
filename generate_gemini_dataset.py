@@ -38,6 +38,9 @@ TASKS:
 - calibrate: suggest a small bounded calibration_patch
 - set_summary: 2–3 sentences + one focus tip
 
+Do not use tempo as a coaching priority in this dataset.
+Prefer depth, knees, or torso safety over timing commentary.
+
 ALLOWED calibration_patch bounds:
 - depth_target_knee_deg: 80..115
 - torso_warn_deg: 25..60
@@ -126,7 +129,7 @@ def parse_args():
     parser.add_argument("--output", default="data/gemini_teacher_dataset.jsonl")
     parser.add_argument("--count", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=50)
-    parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview"))
+    parser.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-2.5-pro"))
     parser.add_argument("--seed-prefix", default="gemini-teacher")
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--max-retries", type=int, default=3)
