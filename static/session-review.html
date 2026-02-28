@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Review</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a31;
+    --panel-2: #18223e;
+    --text: #eef4ff;
+    --muted: #9aacd3;
+    --good: #44d17a;
+    --warn: #ffcc4d;
+    --bad: #ff6b6b;
+    --accent: #67d1ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(460px, 1.25fr) minmax(360px, 0.9fr);
+    gap: 18px;
+    padding: 18px;
+    min-height: 100vh;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #293657;
+    border-radius: 18px;
+    padding: 16px;
+  }
+  h1, h2, h3, p { margin: 0; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .sub { color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .filebox {
+    background: var(--panel-2);
+    border: 1px solid #32446e;
+    border-radius: 14px;
+    padding: 12px;
+  }
+  .filebox label {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  input[type="file"] { width: 100%; color: var(--text); }
+  video {
+    width: 100%;
+    border-radius: 14px;
+    background: black;
+    margin-bottom: 14px;
+  }
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .card {
+    background: var(--panel-2);
+    border-radius: 14px;
+    padding: 12px;
+    border: 1px solid #31405f;
+  }
+  .card .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .card .value {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .status-grid, .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .pill {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .good { background: rgba(68, 209, 122, 0.14); color: var(--good); }
+  .bad { background: rgba(255, 107, 107, 0.14); color: var(--bad); }
+  .warn { background: rgba(255, 204, 77, 0.14); color: var(--warn); }
+  .timeline {
+    height: 18px;
+    border-radius: 999px;
+    background: #0d1326;
+    border: 1px solid #31405f;
+    overflow: hidden;
+    margin: 12px 0 8px;
+  }
+  .timeline-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #ff6b6b 0%, #ffcc4d 45%, #44d17a 100%);
+    transform-origin: left center;
+  }
+  .notes {
+    color: var(--muted);
+    line-height: 1.55;
+    font-size: 14px;
+  }
+  .mono { font-family: "SFMono-Regular", Menlo, monospace; }
+  .empty { color: var(--muted); padding: 14px 0; }
+</style>
+</head>
+<body>
+  <div class="layout">
+    <section class="panel">
+      <h1>Session Review</h1>
+      <p class="sub">Load a recorded video and matching session JSON. The viewer syncs the nearest recorded frame to the current playback time and shows setup status plus exported angles.</p>
+      <div class="controls">
+        <div class="filebox">
+          <label for="video-file">Video</label>
+          <input id="video-file" type="file" accept="video/*">
+        </div>
+        <div class="filebox">
+          <label for="json-file">Session JSON</label>
+          <input id="json-file" type="file" accept="application/json,.json">
+        </div>
+      </div>
+      <video id="video" controls></video>
+      <div class="timeline"><div id="timeline-bar" class="timeline-bar" style="width:0%"></div></div>
+      <p id="timeline-label" class="notes">No session loaded.</p>
+    </section>
+
+    <aside class="panel">
+      <div class="summary">
+        <div class="card"><div class="label">Frame</div><div id="frame-idx" class="value">-</div></div>
+        <div class="card"><div class="label">Time</div><div id="frame-time" class="value">-</div></div>
+        <div class="card"><div class="label">Phase</div><div id="phase" class="value">-</div></div>
+        <div class="card"><div class="label">Rep</div><div id="rep" class="value">-</div></div>
+      </div>
+
+      <h3>Setup</h3>
+      <div class="status-grid">
+        <div class="card"><div class="label">Head</div><div id="setup-head" class="pill bad">Unknown</div></div>
+        <div class="card"><div class="label">Feet</div><div id="setup-feet" class="pill bad">Unknown</div></div>
+        <div class="card"><div class="label">Centered</div><div id="setup-center" class="pill bad">Unknown</div></div>
+        <div class="card"><div class="label">Side View</div><div id="setup-view" class="pill bad">Unknown</div></div>
+      </div>
+
+      <h3>Live Metrics</h3>
+      <div class="metric-grid">
+        <div class="card"><div class="label">Knee</div><div id="knee" class="value">-</div></div>
+        <div class="card"><div class="label">Hip</div><div id="hip" class="value">-</div></div>
+        <div class="card"><div class="label">Torso</div><div id="torso" class="value">-</div></div>
+        <div class="card"><div class="label">Shin</div><div id="shin" class="value">-</div></div>
+        <div class="card"><div class="label">Hip Below Knee</div><div id="depth" class="pill warn">-</div></div>
+        <div class="card"><div class="label">Tempo</div><div id="tempo" class="value">-</div></div>
+      </div>
+
+      <h3>Session Notes</h3>
+      <div id="notes" class="notes empty">Load both files to inspect the session.</div>
+    </aside>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {
+  session: null,
+  frames: [],
+  startTimestamp: null,
+};
+
+function setPill(id, value) {
+  const el = $(id);
+  const truthy = value === true;
+  el.textContent = value == null ? 'N/A' : truthy ? 'PASS' : 'FAIL';
+  el.className = `pill ${truthy ? 'good' : 'bad'}`;
+}
+
+function formatMs(ms) {
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function loadJson(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.session = JSON.parse(reader.result);
+    state.frames = state.session.frames || [];
+    state.startTimestamp = state.frames.length ? state.frames[0].timestamp_ms : null;
+    updateSummaryNotes();
+    syncToVideo();
+  };
+  reader.readAsText(file);
+}
+
+function updateSummaryNotes() {
+  if (!state.session) return;
+  const frames = state.frames;
+  const allSetup = frames.filter(f => {
+    const s = f.setup || {};
+    return s.head_visible && s.feet_visible && s.centered && s.side_view;
+  }).length;
+  const gatePass = frames.filter(f => f.gate_pass).length;
+  $('notes').classList.remove('empty');
+  $('notes').innerHTML = `
+    <div><span class="mono">schema_version</span>: ${state.session.schema_version || 'unknown'}</div>
+    <div><span class="mono">frames</span>: ${frames.length}</div>
+    <div><span class="mono">rep_summaries</span>: ${(state.session.rep_summaries || []).length}</div>
+    <div><span class="mono">all setup checks true</span>: ${allSetup} frames</div>
+    <div><span class="mono">gate_pass true</span>: ${gatePass} frames</div>
+  `;
+}
+
+function nearestFrame(playbackMs) {
+  if (!state.frames.length || state.startTimestamp == null) return null;
+  const target = state.startTimestamp + playbackMs;
+  let lo = 0;
+  let hi = state.frames.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (state.frames[mid].timestamp_ms < target) lo = mid + 1;
+    else hi = mid;
+  }
+  const current = state.frames[lo];
+  const prev = state.frames[Math.max(0, lo - 1)];
+  return Math.abs((prev?.timestamp_ms ?? Infinity) - target) < Math.abs(current.timestamp_ms - target)
+    ? { frame: prev, index: Math.max(0, lo - 1) }
+    : { frame: current, index: lo };
+}
+
+function updateFrame(frameInfo) {
+  if (!frameInfo) return;
+  const { frame, index } = frameInfo;
+  $('frame-idx').textContent = index;
+  $('frame-time').textContent = formatMs(frame.timestamp_ms - state.startTimestamp);
+  $('phase').textContent = frame.live?.phase || frame.phase || '-';
+  $('rep').textContent = frame.live?.rep_count ?? frame.rep_number ?? '-';
+
+  const setup = frame.setup || {};
+  setPill('setup-head', setup.head_visible);
+  setPill('setup-feet', setup.feet_visible);
+  setPill('setup-center', setup.centered);
+  setPill('setup-view', setup.side_view);
+
+  const live = frame.live || {};
+  $('knee').textContent = live.knee_angle == null ? '-' : `${live.knee_angle.toFixed(1)}°`;
+  $('hip').textContent = live.hip_angle == null ? '-' : `${live.hip_angle.toFixed(1)}°`;
+  $('torso').textContent = live.torso_angle == null ? '-' : `${live.torso_angle.toFixed(1)}°`;
+  $('shin').textContent = live.shin_angle == null ? '-' : `${live.shin_angle.toFixed(1)}°`;
+  const depthEl = $('depth');
+  depthEl.textContent = live.hip_below_knee == null ? 'N/A' : (live.hip_below_knee ? 'YES' : 'NO');
+  depthEl.className = `pill ${live.hip_below_knee ? 'good' : 'warn'}`;
+  $('tempo').textContent = live.tempo_ms == null ? '-' : formatMs(live.tempo_ms);
+}
+
+function syncToVideo() {
+  const video = $('video');
+  const info = nearestFrame(video.currentTime * 1000);
+  updateFrame(info);
+  if (video.duration) {
+    $('timeline-bar').style.width = `${(video.currentTime / video.duration) * 100}%`;
+    $('timeline-label').textContent = `${video.currentTime.toFixed(2)}s / ${video.duration.toFixed(2)}s`;
+  }
+}
+
+$('video-file').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  $('video').src = URL.createObjectURL(file);
+});
+
+$('json-file').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  loadJson(file);
+});
+
+$('video').addEventListener('timeupdate', syncToVideo);
+$('video').addEventListener('loadedmetadata', syncToVideo);
+</script>
+</body>
+</html>

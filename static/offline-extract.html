@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offline Video Extractor</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a31;
+    --panel2: #18223e;
+    --text: #edf3ff;
+    --muted: #9eb0d8;
+    --accent: #67d1ff;
+    --good: #44d17a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 18px; }
+  .panel { background: var(--panel); border: 1px solid #293657; border-radius: 18px; padding: 16px; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .sub { color: var(--muted); line-height: 1.5; margin-bottom: 16px; }
+  .controls { display: grid; gap: 12px; margin-bottom: 16px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { background: var(--panel2); border: 1px solid #31405f; border-radius: 14px; padding: 12px; }
+  .field label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:8px; }
+  input, select, button { width:100%; }
+  input[type="file"], select, button { background:#0f1730; color:var(--text); border:1px solid #31405f; border-radius:10px; padding:10px 12px; }
+  button { cursor:pointer; font-weight:700; }
+  button.primary { background:#153661; border-color:#2d5c9d; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  video, canvas { width:100%; border-radius:14px; background:black; }
+  canvas { margin-top: 10px; }
+  .statgrid { display:grid; grid-template-columns: repeat(2,1fr); gap:10px; margin:14px 0; }
+  .card { background: var(--panel2); border:1px solid #31405f; border-radius:14px; padding:12px; }
+  .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+  .value { font-size:22px; font-weight:700; }
+  .mono { font-family: SFMono-Regular, Menlo, monospace; font-size: 13px; white-space: pre-wrap; color: var(--muted); line-height: 1.5; }
+  progress { width:100%; height: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel" style="margin-bottom:18px;">
+    <h1>Offline Video Extractor</h1>
+    <p class="sub">Upload a recorded squat video, rerun MediaPipe locally, and export a fresh side-view JSON. This ignores whether the original live recorder was in the right state.</p>
+  </div>
+  <div class="grid">
+    <section class="panel">
+      <div class="controls">
+        <div class="field">
+          <label for="video-file">Video File</label>
+          <input id="video-file" type="file" accept="video/*">
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="camera-angle">Camera Angle</label>
+            <select id="camera-angle">
+              <option>0deg</option>
+              <option>22.5deg</option>
+              <option selected>45deg</option>
+              <option>67.5deg</option>
+              <option>90deg</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="camera-height">Camera Height</label>
+            <select id="camera-height">
+              <option>floor</option>
+              <option selected>hip</option>
+              <option>chest</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="sample-fps">Sample FPS</label>
+            <select id="sample-fps">
+              <option>10</option>
+              <option selected>15</option>
+              <option>20</option>
+              <option>30</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="min-conf">Min Confidence Gate</label>
+            <select id="min-conf">
+              <option>0.10</option>
+              <option>0.20</option>
+              <option>0.30</option>
+              <option>0.35</option>
+              <option>0.40</option>
+              <option>0.45</option>
+              <option>0.50</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <button id="process-btn" class="primary" disabled>Process Video</button>
+          <button id="export-btn" disabled>Export JSON</button>
+        </div>
+      </div>
+      <video id="video" controls></video>
+      <canvas id="preview" width="1280" height="720"></canvas>
+    </section>
+
+    <aside class="panel">
+      <div class="statgrid">
+        <div class="card"><div class="label">Processed Frames</div><div id="frames" class="value">0</div></div>
+        <div class="card"><div class="label">Rep Count</div><div id="reps" class="value">0</div></div>
+        <div class="card"><div class="label">Setup Frames</div><div id="setup-count" class="value">0</div></div>
+        <div class="card"><div class="label">Live Frames</div><div id="live-count" class="value">0</div></div>
+      </div>
+      <progress id="progress" value="0" max="1"></progress>
+      <div style="height:10px;"></div>
+      <div id="status" class="mono">Load a video to begin.</div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from "/mediapipe/vision_bundle.mjs";
+
+const CONFIG = {
+  standingAngle: 155,
+  bottomAngle: 110,
+  angleVelocityThreshold: 1.5,
+  minBodyFill: 0.55,
+  maxBodyFill: 0.9,
+  maxCenterOffset: 0.1,
+  sideViewSpreadMax: 0.18,
+};
+
+const LM = {
+  LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
+  LEFT_HIP: 23, RIGHT_HIP: 24,
+  LEFT_KNEE: 25, RIGHT_KNEE: 26,
+  LEFT_ANKLE: 27, RIGHT_ANKLE: 28,
+};
+
+const SKELETON = [[11,12],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+
+const $ = (id) => document.getElementById(id);
+let poseLandmarker = null;
+let videoFile = null;
+let exportPayload = null;
+
+class LandmarkSmoother {
+  constructor(alpha = 0.7) { this.alpha = alpha; this.prev = null; }
+  update(landmarks) {
+    if (!this.prev) { this.prev = landmarks.map(l => ({ ...l })); return landmarks; }
+    const out = landmarks.map((l, i) => ({
+      x: this.alpha * l.x + (1 - this.alpha) * this.prev[i].x,
+      y: this.alpha * l.y + (1 - this.alpha) * this.prev[i].y,
+      z: this.alpha * (l.z || 0) + (1 - this.alpha) * (this.prev[i].z || 0),
+      visibility: l.visibility ?? 0,
+    }));
+    this.prev = out.map(l => ({ ...l }));
+    return out;
+  }
+}
+
+class PhaseDetector {
+  constructor() { this.phase = 'standing'; this.angleHistory = []; this.wasAtBottom = false; this.repComplete = false; }
+  update(kneeAngle) {
+    this.repComplete = false;
+    this.angleHistory.push(kneeAngle);
+    if (this.angleHistory.length > 8) this.angleHistory.shift();
+    const v = this.velocity();
+    switch (this.phase) {
+      case 'standing':
+        if (kneeAngle < CONFIG.standingAngle && v < -CONFIG.angleVelocityThreshold) this.phase = 'descending';
+        break;
+      case 'descending':
+        if (kneeAngle <= CONFIG.bottomAngle || (Math.abs(v) < CONFIG.angleVelocityThreshold && kneeAngle < CONFIG.standingAngle - 15)) {
+          this.phase = 'bottom'; this.wasAtBottom = true;
+        } else if (kneeAngle >= CONFIG.standingAngle) this.phase = 'standing';
+        break;
+      case 'bottom':
+        if (v > CONFIG.angleVelocityThreshold) this.phase = 'ascending';
+        else if (v < -CONFIG.angleVelocityThreshold) this.phase = 'descending';
+        break;
+      case 'ascending':
+        if (kneeAngle >= CONFIG.standingAngle) {
+          this.phase = 'standing';
+          if (this.wasAtBottom) { this.repComplete = true; this.wasAtBottom = false; }
+        } else if (v < -CONFIG.angleVelocityThreshold * 1.5) this.phase = 'descending';
+        break;
+    }
+    return { phase: this.phase, repComplete: this.repComplete };
+  }
+  velocity() {
+    if (this.angleHistory.length < 3) return 0;
+    const recent = this.angleHistory.slice(-3);
+    return (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
+  }
+}
+
+function computeAngle(a, b, c) {
+  const ba = { x: a.x - b.x, y: a.y - b.y };
+  const bc = { x: c.x - b.x, y: c.y - b.y };
+  const dot = ba.x * bc.x + ba.y * bc.y;
+  const magBA = Math.hypot(ba.x, ba.y);
+  const magBC = Math.hypot(bc.x, bc.y);
+  if (!magBA || !magBC) return 180;
+  return Math.acos(Math.max(-1, Math.min(1, dot / (magBA * magBC)))) * (180 / Math.PI);
+}
+
+function computeTorsoAngle(shoulder, hip) {
+  const dx = shoulder.x - hip.x;
+  const dy = shoulder.y - hip.y;
+  return Math.abs(Math.atan2(Math.abs(dx), -dy) * (180 / Math.PI));
+}
+
+function computeSegmentAngle(top, bottom) {
+  const dx = top.x - bottom.x;
+  const dy = top.y - bottom.y;
+  return Math.abs(Math.atan2(Math.abs(dx), Math.abs(dy)) * (180 / Math.PI));
+}
+
+function setupChecks(landmarks, confidenceThreshold) {
+  const head = landmarks[0];
+  const leftAnkle = landmarks[LM.LEFT_ANKLE];
+  const rightAnkle = landmarks[LM.RIGHT_ANKLE];
+  const shoulderMidX = (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) / 2;
+  const hipMidX = (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2;
+  const visible = [head, landmarks[LM.LEFT_SHOULDER], landmarks[LM.RIGHT_SHOULDER], landmarks[LM.LEFT_HIP], landmarks[LM.RIGHT_HIP], landmarks[LM.LEFT_KNEE], landmarks[LM.RIGHT_KNEE], leftAnkle, rightAnkle]
+    .filter(Boolean)
+    .filter(p => (p.visibility ?? 0) >= confidenceThreshold);
+  const bbox = visible.length ? {
+    minX: Math.min(...visible.map(p => p.x)),
+    maxX: Math.max(...visible.map(p => p.x)),
+    minY: Math.min(...visible.map(p => p.y)),
+    maxY: Math.max(...visible.map(p => p.y)),
+  } : null;
+  const bodyFill = bbox ? bbox.maxY - bbox.minY : 0;
+  const centerX = bbox ? (bbox.minX + bbox.maxX) / 2 : 0.5;
+  const centerOffset = Math.abs(centerX - 0.5);
+  const sideSpread = Math.abs(shoulderMidX - hipMidX) + Math.abs(landmarks[LM.LEFT_SHOULDER].x - landmarks[LM.RIGHT_SHOULDER].x) * 0.5;
+  return {
+    head_visible: !!head && (head.visibility ?? 0) >= confidenceThreshold,
+    feet_visible: !!leftAnkle && !!rightAnkle && (leftAnkle.visibility ?? 0) >= confidenceThreshold && (rightAnkle.visibility ?? 0) >= confidenceThreshold,
+    centered: centerOffset <= CONFIG.maxCenterOffset,
+    side_view: sideSpread <= CONFIG.sideViewSpreadMax,
+    distance_ok: bodyFill >= CONFIG.minBodyFill && bodyFill <= CONFIG.maxBodyFill,
+  };
+}
+
+function computeLive(landmarks, phase, repCount, elapsedMs) {
+  const lKnee = computeAngle(landmarks[LM.LEFT_HIP], landmarks[LM.LEFT_KNEE], landmarks[LM.LEFT_ANKLE]);
+  const rKnee = computeAngle(landmarks[LM.RIGHT_HIP], landmarks[LM.RIGHT_KNEE], landmarks[LM.RIGHT_ANKLE]);
+  const kneeAngle = (lKnee + rKnee) / 2;
+  const lHip = computeAngle(landmarks[LM.LEFT_SHOULDER], landmarks[LM.LEFT_HIP], landmarks[LM.LEFT_KNEE]);
+  const rHip = computeAngle(landmarks[LM.RIGHT_SHOULDER], landmarks[LM.RIGHT_HIP], landmarks[LM.RIGHT_KNEE]);
+  const hipAngle = (lHip + rHip) / 2;
+  const midS = { x: (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) / 2, y: (landmarks[LM.LEFT_SHOULDER].y + landmarks[LM.RIGHT_SHOULDER].y) / 2 };
+  const midH = { x: (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2, y: (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2 };
+  const torsoAngle = computeTorsoAngle(midS, midH);
+  const shinAngle = (computeSegmentAngle(landmarks[LM.LEFT_KNEE], landmarks[LM.LEFT_ANKLE]) + computeSegmentAngle(landmarks[LM.RIGHT_KNEE], landmarks[LM.RIGHT_ANKLE])) / 2;
+  const kneeMidY = (landmarks[LM.LEFT_KNEE].y + landmarks[LM.RIGHT_KNEE].y) / 2;
+  const hipMidY = (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2;
+  return {
+    phase,
+    rep_count: repCount,
+    knee_angle: Number(kneeAngle.toFixed(2)),
+    hip_angle: Number(hipAngle.toFixed(2)),
+    torso_angle: Number(torsoAngle.toFixed(2)),
+    shin_angle: Number(shinAngle.toFixed(2)),
+    hip_below_knee: hipMidY > kneeMidY,
+    tempo_ms: Math.round(elapsedMs),
+  };
+}
+
+function isSaneLiveFrame(live) {
+  if (!live) return false;
+  const ranges = {
+    knee_angle: [45, 180],
+    hip_angle: [45, 180],
+    torso_angle: [0, 80],
+    shin_angle: [0, 70],
+    tempo_ms: [0, 10000],
+  };
+  for (const [key, [low, high]] of Object.entries(ranges)) {
+    const value = live[key];
+    if (!Number.isFinite(value) || value < low || value > high) return false;
+  }
+  return typeof live.hip_below_knee === 'boolean';
+}
+
+function drawPreview(video, canvas, landmarks, live) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(video, 0, 0, w, h);
+  if (!landmarks) return;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(103,209,255,0.8)';
+  for (const [aIdx, bIdx] of SKELETON) {
+    const a = landmarks[aIdx], b = landmarks[bIdx];
+    if (!a || !b || (a.visibility ?? 0) < 0.2 || (b.visibility ?? 0) < 0.2) continue;
+    ctx.beginPath();
+    ctx.moveTo(a.x * w, a.y * h);
+    ctx.lineTo(b.x * w, b.y * h);
+    ctx.stroke();
+  }
+  for (const idx of [11,12,23,24,25,26,27,28]) {
+    const l = landmarks[idx];
+    if (!l || (l.visibility ?? 0) < 0.2) continue;
+    ctx.fillStyle = 'rgba(68,209,122,0.9)';
+    ctx.beginPath();
+    ctx.arc(l.x * w, l.y * h, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (live) {
+    ctx.fillStyle = 'rgba(10,16,32,0.7)';
+    ctx.fillRect(18, 18, 230, 120);
+    ctx.fillStyle = 'white';
+    ctx.font = '16px monospace';
+    ctx.fillText(`phase: ${live.phase}`, 30, 46);
+    ctx.fillText(`rep: ${live.rep_count}`, 30, 68);
+    ctx.fillText(`knee: ${live.knee_angle}°`, 30, 90);
+    ctx.fillText(`hip: ${live.hip_angle}°`, 30, 112);
+    ctx.fillText(`torso: ${live.torso_angle}°`, 30, 134);
+  }
+}
+
+async function ensurePose() {
+  if (poseLandmarker) return poseLandmarker;
+  $('status').textContent = 'Loading MediaPipe runtime and pose model...';
+  const vision = await FilesetResolver.forVisionTasks("/mediapipe/wasm");
+  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: "/models/pose_landmarker_lite.task", delegate: "GPU" },
+    runningMode: "VIDEO",
+    numPoses: 1,
+  });
+  return poseLandmarker;
+}
+
+async function processVideo() {
+  const file = $('video-file').files[0];
+  if (!file) return;
+  const sampleFps = Number($('sample-fps').value);
+  const minConf = Number($('min-conf').value);
+  $('process-btn').disabled = true;
+  $('export-btn').disabled = true;
+
+  const landmarker = await ensurePose();
+  const video = $('video');
+  if (!video.src) video.src = URL.createObjectURL(file);
+  video.muted = true;
+  video.playsInline = true;
+  await new Promise(resolve => {
+    if (video.readyState >= 2) resolve();
+    else video.onloadedmetadata = resolve;
+  });
+  const stepMs = 1000 / sampleFps;
+  const smoother = new LandmarkSmoother(0.7);
+  const phaseDetector = new PhaseDetector();
+  let repCount = 0;
+  let phaseStartTime = 0;
+  let repStartTime = 0;
+  let lastPhase = 'standing';
+  let currentBottom = null;
+  const frames = [];
+  const repSummaries = [];
+  let processedSteps = 0;
+  let lastSampleMs = -Infinity;
+
+  const processAt = async (nowMs) => {
+    const result = landmarker.detectForVideo(video, nowMs);
+    const raw = result.landmarks?.[0];
+    let frame = {
+      timestamp_ms: Math.round(nowMs),
+      gate_pass: false,
+      rep_mode_active: false,
+      phase: phaseDetector.phase,
+      rep_number: repCount,
+      setup: { head_visible: false, feet_visible: false, centered: false, side_view: false },
+      live: null,
+      confidence_avg: 0,
+      confidence_min: 0,
+    };
+    if (raw) {
+      const confs = [LM.LEFT_HIP, LM.RIGHT_HIP, LM.LEFT_KNEE, LM.RIGHT_KNEE, LM.LEFT_ANKLE, LM.RIGHT_ANKLE, LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER]
+        .map(i => raw[i]?.visibility ?? 0);
+      frame.confidence_avg = Number((confs.reduce((a, b) => a + b, 0) / confs.length).toFixed(4));
+      frame.confidence_min = Number(Math.min(...confs).toFixed(4));
+      const setup = setupChecks(raw, minConf);
+      frame.setup = setup;
+      frame.gate_pass = setup.head_visible && setup.feet_visible && setup.centered && setup.side_view && frame.confidence_min >= minConf;
+      const smooth = smoother.update(raw);
+      const provisional = computeLive(smooth, phaseDetector.phase, repCount, nowMs - phaseStartTime);
+      if (isSaneLiveFrame(provisional)) frame.live = provisional;
+      if (isSaneLiveFrame(provisional)) {
+        const { phase, repComplete } = phaseDetector.update(provisional.knee_angle);
+        frame.phase = phase;
+        if (phase !== lastPhase) {
+          phaseStartTime = nowMs;
+          lastPhase = phase;
+          if (phase === 'descending') repStartTime = nowMs;
+        }
+        const updatedLive = computeLive(smooth, phase, repCount, nowMs - phaseStartTime);
+        frame.live = isSaneLiveFrame(updatedLive) ? updatedLive : null;
+        frame.rep_mode_active = true;
+        if (phase === 'bottom') {
+          currentBottom = {
+            knee_angle: provisional.knee_angle,
+            hip_angle: provisional.hip_angle,
+            torso_angle: provisional.torso_angle,
+            shin_angle: provisional.shin_angle,
+          };
+        }
+        if (repComplete) {
+          repCount += 1;
+          repSummaries.push({
+            rep_number: repCount,
+            bottom_frame: currentBottom,
+            tempo: { total_ms: Math.round(nowMs - repStartTime) },
+          });
+          currentBottom = null;
+        }
+        frame.rep_number = repCount;
+        if (frame.live) frame.live.rep_count = repCount;
+      }
+      drawPreview(video, $('preview'), smooth, frame.live);
+    } else {
+      drawPreview(video, $('preview'), null, null);
+    }
+    frames.push(frame);
+    $('frames').textContent = frames.length;
+    $('reps').textContent = repCount;
+    processedSteps += 1;
+    $('status').textContent = `Processing ${processedSteps} frames\ncurrent_time=${(nowMs / 1000).toFixed(2)}s\nrep_count=${repCount}`;
+    await new Promise(r => setTimeout(r, 0));
+  };
+
+  await video.play();
+  await new Promise((resolve, reject) => {
+    const onEnded = () => {
+      video.removeEventListener('ended', onEnded);
+      resolve();
+    };
+    const onError = () => {
+      video.removeEventListener('ended', onEnded);
+      reject(new Error('Video playback failed during extraction.'));
+    };
+    video.addEventListener('ended', onEnded, { once: true });
+    video.addEventListener('error', onError, { once: true });
+
+    const tick = async (_now, metadata) => {
+      const nowMs = metadata.mediaTime * 1000;
+      if (nowMs - lastSampleMs >= stepMs - 1) {
+        lastSampleMs = nowMs;
+        await processAt(nowMs);
+      }
+      $('progress').removeAttribute('value');
+      if (!video.ended) video.requestVideoFrameCallback(tick);
+    };
+    video.requestVideoFrameCallback(tick);
+  });
+  video.pause();
+
+  const setupDataset = frames.filter(f => !f.gate_pass).map(f => ({
+    timestamp_ms: f.timestamp_ms,
+    head_visible: f.setup.head_visible,
+    feet_visible: f.setup.feet_visible,
+    centered: f.setup.centered,
+    side_view: f.setup.side_view,
+    gate_pass: f.gate_pass,
+    confidence_avg: f.confidence_avg,
+  }));
+  const liveDataset = frames.filter(f => f.live).map(f => ({
+    timestamp_ms: f.timestamp_ms,
+    ...f.live,
+  }));
+  exportPayload = {
+    session_id: `offline-${new Date().toISOString().replace(/[:.]/g, '-')}`,
+    created_at: new Date().toISOString(),
+    source_video: file.name,
+    camera_angle: $('camera-angle').value,
+    camera_height: $('camera-height').value,
+    schema_version: 'v2-side-view-offline',
+    extractor: {
+      sample_fps: sampleFps,
+      min_confidence_gate: minConf,
+    },
+    frames,
+    rep_summaries: repSummaries,
+    datasets: {
+      setup_coach: setupDataset,
+      live_cue_side: liveDataset,
+    },
+  };
+  $('setup-count').textContent = setupDataset.length;
+  $('live-count').textContent = liveDataset.length;
+  $('progress').value = 1;
+  $('status').textContent += `\n\nDone.\nsetup_frames=${setupDataset.length}\nlive_frames=${liveDataset.length}`;
+  $('process-btn').disabled = false;
+  $('export-btn').disabled = false;
+}
+
+$('video-file').addEventListener('change', (event) => {
+  videoFile = event.target.files[0] || null;
+  if (videoFile) {
+    $('video').src = URL.createObjectURL(videoFile);
+    $('process-btn').disabled = false;
+    $('status').textContent = `Loaded ${videoFile.name}`;
+  }
+});
+
+$('process-btn').addEventListener('click', processVideo);
+$('export-btn').addEventListener('click', () => {
+  if (!exportPayload) return;
+  const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(videoFile?.name || 'session').replace(/\.[^.]+$/, '')}.offline.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>

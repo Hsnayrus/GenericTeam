@@ -1,0 +1,95 @@
+<svg width="1100" height="760" viewBox="0 0 1100 760" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1100" height="760" fill="#0a1020"/>
+  <defs>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#10182f"/>
+      <stop offset="100%" stop-color="#0c1326"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="34" y="34" width="570" height="692" rx="24" fill="url(#panel)" stroke="#26324f" stroke-width="2"/>
+  <rect x="628" y="34" width="438" height="692" rx="24" fill="url(#panel)" stroke="#26324f" stroke-width="2"/>
+
+  <text x="64" y="82" fill="#eef4ff" font-size="34" font-family="Arial, sans-serif" font-weight="700">Side-View Squat Pose Data</text>
+  <text x="64" y="114" fill="#97a8cf" font-size="18" font-family="Arial, sans-serif">Best usable coaching features come from clean side-view landmarks plus a few stable derived angles.</text>
+
+  <text x="660" y="82" fill="#eef4ff" font-size="28" font-family="Arial, sans-serif" font-weight="700">Most Useful Signals</text>
+
+  <line x1="260" y1="150" x2="255" y2="218" stroke="#8ef7b6" stroke-width="6" stroke-linecap="round"/>
+  <line x1="255" y1="218" x2="290" y2="292" stroke="#73d6ff" stroke-width="6" stroke-linecap="round"/>
+  <line x1="290" y1="292" x2="316" y2="404" stroke="#ffd166" stroke-width="7" stroke-linecap="round"/>
+  <line x1="316" y1="404" x2="370" y2="555" stroke="#ff8fab" stroke-width="7" stroke-linecap="round"/>
+  <line x1="370" y1="555" x2="446" y2="628" stroke="#caa8ff" stroke-width="7" stroke-linecap="round"/>
+
+  <line x1="258" y1="226" x2="334" y2="248" stroke="#56cfe1" stroke-width="6" stroke-linecap="round"/>
+  <line x1="334" y1="248" x2="412" y2="294" stroke="#56cfe1" stroke-width="6" stroke-linecap="round"/>
+
+  <circle cx="260" cy="132" r="22" fill="#8ef7b6"/>
+  <circle cx="255" cy="218" r="15" fill="#73d6ff"/>
+  <circle cx="290" cy="292" r="16" fill="#ffd166"/>
+  <circle cx="316" cy="404" r="16" fill="#ff8fab"/>
+  <circle cx="370" cy="555" r="16" fill="#caa8ff"/>
+  <circle cx="446" cy="628" r="15" fill="#caa8ff"/>
+  <circle cx="334" cy="248" r="13" fill="#56cfe1"/>
+  <circle cx="412" cy="294" r="13" fill="#56cfe1"/>
+
+  <line x1="316" y1="404" x2="316" y2="628" stroke="#22304f" stroke-width="2" stroke-dasharray="8 8"/>
+  <line x1="370" y1="555" x2="520" y2="555" stroke="#22304f" stroke-width="2" stroke-dasharray="8 8"/>
+  <line x1="290" y1="292" x2="472" y2="292" stroke="#22304f" stroke-width="2" stroke-dasharray="8 8"/>
+
+  <path d="M274 238 A88 88 0 0 1 306 326" fill="none" stroke="#00d4ff" stroke-width="4"/>
+  <text x="318" y="272" fill="#00d4ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">Back / torso angle</text>
+
+  <path d="M304 408 A70 70 0 0 0 375 538" fill="none" stroke="#ffb703" stroke-width="4"/>
+  <text x="395" y="468" fill="#ffb703" font-size="18" font-family="Arial, sans-serif" font-weight="700">Knee angle</text>
+
+  <path d="M258 286 A46 46 0 0 1 330 389" fill="none" stroke="#ff6b6b" stroke-width="4"/>
+  <text x="342" y="338" fill="#ff6b6b" font-size="18" font-family="Arial, sans-serif" font-weight="700">Hip angle</text>
+
+  <path d="M324 249 A46 46 0 0 1 398 300" fill="none" stroke="#72efdd" stroke-width="4"/>
+  <text x="422" y="270" fill="#72efdd" font-size="18" font-family="Arial, sans-serif" font-weight="700">Arm angle</text>
+
+  <path d="M371 557 A56 56 0 0 1 445 629" fill="none" stroke="#b388ff" stroke-width="4"/>
+  <text x="462" y="602" fill="#b388ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">Shin angle</text>
+
+  <line x1="560" y1="555" x2="560" y2="628" stroke="#42e87b" stroke-width="4"/>
+  <line x1="530" y1="555" x2="590" y2="555" stroke="#42e87b" stroke-width="4"/>
+  <line x1="530" y1="628" x2="590" y2="628" stroke="#42e87b" stroke-width="4"/>
+  <text x="488" y="544" fill="#42e87b" font-size="17" font-family="Arial, sans-serif" font-weight="700">Knee over</text>
+  <text x="500" y="566" fill="#42e87b" font-size="17" font-family="Arial, sans-serif" font-weight="700">mid-foot</text>
+
+  <line x1="505" y1="292" x2="545" y2="292" stroke="#ffd166" stroke-width="4"/>
+  <line x1="505" y1="404" x2="545" y2="404" stroke="#ffd166" stroke-width="4"/>
+  <text x="552" y="304" fill="#ffd166" font-size="17" font-family="Arial, sans-serif" font-weight="700">Hip height</text>
+  <text x="552" y="325" fill="#ffd166" font-size="17" font-family="Arial, sans-serif">vs knee height for depth</text>
+
+  <text x="78" y="676" fill="#97a8cf" font-size="16" font-family="Arial, sans-serif">Points shown: head, shoulder, hip, knee, ankle, toe, elbow, wrist.</text>
+  <text x="78" y="700" fill="#97a8cf" font-size="16" font-family="Arial, sans-serif">For bodyweight squats, arms are secondary. For barbell squats, arm and wrist position become much more useful.</text>
+
+  <rect x="660" y="118" width="370" height="78" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="148" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">1. Torso / back angle</text>
+  <text x="680" y="174" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">Best single safety cue for side view. Track chest drop and excessive lean.</text>
+
+  <rect x="660" y="210" width="370" height="78" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="240" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">2. Knee angle</text>
+  <text x="680" y="266" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">Most useful depth proxy and cleanest phase detector for a squat cycle.</text>
+
+  <rect x="660" y="302" width="370" height="78" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="332" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">3. Hip angle</text>
+  <text x="680" y="358" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">Useful for hip hinge vs squat balance and bottom-position compression.</text>
+
+  <rect x="660" y="394" width="370" height="78" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="424" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">4. Shin angle</text>
+  <text x="680" y="450" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">Helps separate knees-forward mechanics from sitting-too-far-back patterns.</text>
+
+  <rect x="660" y="486" width="370" height="78" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="516" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">5. Hip depth marker</text>
+  <text x="680" y="542" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">Compare hip height to knee height at bottom instead of only using one angle.</text>
+
+  <rect x="660" y="578" width="370" height="118" rx="14" fill="#12203c" stroke="#29416c"/>
+  <text x="680" y="608" fill="#73d6ff" font-size="18" font-family="Arial, sans-serif" font-weight="700">Best compact feature set for a side-view squat coach</text>
+  <text x="680" y="635" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">head_visible, feet_visible, centered</text>
+  <text x="680" y="658" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">phase, rep_count, knee_angle, hip_angle, torso_angle</text>
+  <text x="680" y="681" fill="#d7e0f4" font-size="16" font-family="Arial, sans-serif">shin_angle, hip_below_knee, knee_over_midfoot, tempo</text>
+
+</svg>

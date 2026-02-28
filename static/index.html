@@ -877,6 +877,7 @@
         start(meta) {
           this.active = true;
           this.session = {
+            schema_version: "squat_state_v1",
             session_id: `session-${new Date().toISOString().replace(/[:.]/g, "-")}`,
             created_at: new Date().toISOString(),
             camera_angle: meta.cameraAngle,
@@ -1067,6 +1068,100 @@
         const dx = shoulder.x - hip.x;
         const dy = shoulder.y - hip.y;
         return Math.abs(Math.atan2(Math.abs(dx), -dy) * (180 / Math.PI));
+      }
+
+      function computeSegmentAngle(a, b) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        return Math.abs(Math.atan2(Math.abs(dx), Math.abs(dy)) * (180 / Math.PI));
+      }
+
+      function hasPoint(point) {
+        return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
+      }
+
+      function computeLiveMetrics(landmarks, phase, repCount, now, phaseStartTime) {
+        const required = [
+          landmarks[LM.LEFT_SHOULDER],
+          landmarks[LM.RIGHT_SHOULDER],
+          landmarks[LM.LEFT_HIP],
+          landmarks[LM.RIGHT_HIP],
+          landmarks[LM.LEFT_KNEE],
+          landmarks[LM.RIGHT_KNEE],
+          landmarks[LM.LEFT_ANKLE],
+          landmarks[LM.RIGHT_ANKLE],
+        ];
+        if (!required.every(hasPoint)) return null;
+
+        const lKnee = computeAngle(
+          landmarks[LM.LEFT_HIP],
+          landmarks[LM.LEFT_KNEE],
+          landmarks[LM.LEFT_ANKLE],
+        );
+        const rKnee = computeAngle(
+          landmarks[LM.RIGHT_HIP],
+          landmarks[LM.RIGHT_KNEE],
+          landmarks[LM.RIGHT_ANKLE],
+        );
+        const kneeAngle = (lKnee + rKnee) / 2;
+        const lHip = computeAngle(
+          landmarks[LM.LEFT_SHOULDER],
+          landmarks[LM.LEFT_HIP],
+          landmarks[LM.LEFT_KNEE],
+        );
+        const rHip = computeAngle(
+          landmarks[LM.RIGHT_SHOULDER],
+          landmarks[LM.RIGHT_HIP],
+          landmarks[LM.RIGHT_KNEE],
+        );
+        const hipAngle = (lHip + rHip) / 2;
+        const midS = {
+          x:
+            (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) /
+            2,
+          y:
+            (landmarks[LM.LEFT_SHOULDER].y + landmarks[LM.RIGHT_SHOULDER].y) /
+            2,
+        };
+        const midH = {
+          x: (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2,
+          y: (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2,
+        };
+        const torsoAngle = computeTorsoAngle(midS, midH);
+        const leftShinAngle = computeSegmentAngle(
+          landmarks[LM.LEFT_KNEE],
+          landmarks[LM.LEFT_ANKLE],
+        );
+        const rightShinAngle = computeSegmentAngle(
+          landmarks[LM.RIGHT_KNEE],
+          landmarks[LM.RIGHT_ANKLE],
+        );
+        const shinAngle = (leftShinAngle + rightShinAngle) / 2;
+        const kneeMidY =
+          (landmarks[LM.LEFT_KNEE].y + landmarks[LM.RIGHT_KNEE].y) / 2;
+        const hipMidY = (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2;
+        const hipBelowKnee = hipMidY > kneeMidY;
+        return {
+          lKnee,
+          rKnee,
+          kneeAngle,
+          lHip,
+          rHip,
+          hipAngle,
+          torsoAngle,
+          shinAngle,
+          hipBelowKnee,
+          live: {
+            phase,
+            rep_number: repCount,
+            knee_angle: Number(kneeAngle.toFixed(2)),
+            hip_angle: Number(hipAngle.toFixed(2)),
+            torso_angle: Number(torsoAngle.toFixed(2)),
+            shin_angle: Number(shinAngle.toFixed(2)),
+            hip_below_knee: hipBelowKnee,
+            tempo_ms: Math.round(now - phaseStartTime),
+          },
+        };
       }
 
       function mean(values) {
@@ -1586,6 +1681,7 @@
         let phaseStartTime = performance.now();
         let phaseDurations = {};
         let currentBottomMin = null;
+        let repStartTime = performance.now();
 
         const keyJoints = [
           LM.LEFT_HIP,
@@ -1665,6 +1761,13 @@
               rep_number: repCount,
               rep_complete: false,
               setup_state: null,
+              setup: {
+                head_visible: false,
+                feet_visible: false,
+                centered: false,
+                side_view: false,
+              },
+              live: null,
             });
             updateRecorderPanel(recorder);
             requestAnimationFrame(processFrame);
@@ -1706,6 +1809,13 @@
               rep_number: repCount,
               rep_complete: false,
               setup_state: setupAnalysis.checks,
+              setup: {
+                head_visible: setupAnalysis.checks.head,
+                feet_visible: setupAnalysis.checks.feet,
+                centered: setupAnalysis.checks.center,
+                side_view: setupAnalysis.checks.view,
+              },
+              live: null,
             });
             updateRecorderPanel(recorder);
             requestAnimationFrame(processFrame);
@@ -1713,43 +1823,27 @@
           }
 
           const landmarks = smoother.update(raw);
-
-          // Angles
-          const lKnee = computeAngle(
-            landmarks[LM.LEFT_HIP],
-            landmarks[LM.LEFT_KNEE],
-            landmarks[LM.LEFT_ANKLE],
+          const provisionalMetrics = computeLiveMetrics(
+            landmarks,
+            phaseDetector.phase,
+            repCount,
+            now,
+            phaseStartTime,
           );
-          const rKnee = computeAngle(
-            landmarks[LM.RIGHT_HIP],
-            landmarks[LM.RIGHT_KNEE],
-            landmarks[LM.RIGHT_ANKLE],
-          );
-          const kneeAngle = (lKnee + rKnee) / 2;
-          const lHip = computeAngle(
-            landmarks[LM.LEFT_SHOULDER],
-            landmarks[LM.LEFT_HIP],
-            landmarks[LM.LEFT_KNEE],
-          );
-          const rHip = computeAngle(
-            landmarks[LM.RIGHT_SHOULDER],
-            landmarks[LM.RIGHT_HIP],
-            landmarks[LM.RIGHT_KNEE],
-          );
-          const hipAngle = (lHip + rHip) / 2;
-          const midS = {
-            x:
-              (landmarks[LM.LEFT_SHOULDER].x + landmarks[LM.RIGHT_SHOULDER].x) /
-              2,
-            y:
-              (landmarks[LM.LEFT_SHOULDER].y + landmarks[LM.RIGHT_SHOULDER].y) /
-              2,
-          };
-          const midH = {
-            x: (landmarks[LM.LEFT_HIP].x + landmarks[LM.RIGHT_HIP].x) / 2,
-            y: (landmarks[LM.LEFT_HIP].y + landmarks[LM.RIGHT_HIP].y) / 2,
-          };
-          const torsoAngle = computeTorsoAngle(midS, midH);
+          if (!provisionalMetrics) {
+            requestAnimationFrame(processFrame);
+            return;
+          }
+          const {
+            lKnee,
+            rKnee,
+            kneeAngle,
+            hipAngle,
+            torsoAngle,
+            shinAngle,
+            hipBelowKnee,
+            live,
+          } = provisionalMetrics;
           updateAngles(kneeAngle, hipAngle, torsoAngle);
 
           if (!repModeActive) {
@@ -1783,6 +1877,7 @@
             phaseDurations[lastPhase] = now - phaseStartTime;
             phaseStartTime = now;
             lastPhase = phase;
+            if (phase === Phase.DESCENDING) repStartTime = now;
           }
 
           // Track depth history
@@ -1803,6 +1898,12 @@
             recorder.addRepSummary({
               rep_number: repCount,
               bottom_frame: currentBottomMin,
+              tempo: {
+                descent_ms: Math.round(phaseDurations[Phase.DESCENDING] || 0),
+                bottom_ms: Math.round(phaseDurations[Phase.BOTTOM] || 0),
+                ascent_ms: Math.round(phaseDurations[Phase.ASCENDING] || 0),
+                total_ms: Math.round(now - repStartTime),
+              },
             });
             currentBottomMin = null;
             updateRecorderPanel(recorder);
@@ -1837,6 +1938,15 @@
             rep_number: repCount,
             rep_complete: repComplete,
             setup_state: setupAnalysis.checks,
+            setup: {
+              head_visible: setupAnalysis.checks.head,
+              feet_visible: setupAnalysis.checks.feet,
+              centered: setupAnalysis.checks.center,
+              side_view: setupAnalysis.checks.view,
+            },
+            live,
+            shin_angle: Number(shinAngle.toFixed(2)),
+            hip_below_knee: hipBelowKnee,
           });
           updateRecorderPanel(recorder);
 
@@ -1870,12 +1980,13 @@
               knee_angle: Math.round(kneeAngle * 10) / 10,
               hip_angle: Math.round(hipAngle * 10) / 10,
               torso_angle: Math.round(torsoAngle * 10) / 10,
+              shin_angle: Math.round(shinAngle * 10) / 10,
+              hip_below_knee: hipBelowKnee,
+              confidence_min: Number(minConf.toFixed(4)),
               knee_valgus_ratio:
                 kneeValgusRatio != null
                   ? Math.round(kneeValgusRatio * 100) / 100
-                  : 1,
-              depth_history: depthHistory.slice(-8),
-              phase_durations_ms: { ...phaseDurations },
+                  : null,
             });
           }
 
