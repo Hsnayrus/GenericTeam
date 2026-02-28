@@ -1,5 +1,23 @@
 # CLAUDE.md — Squat Coach
 
+## Hackathon Context
+
+This project is a submission for an 8-hour hackathon. Judges evaluate on four required components:
+
+| Requirement | How this project satisfies it |
+|---|---|
+| **Fine-tuned on-device model** | Gemma 2B (MLX, Apple Silicon) fine-tuned on squat coaching JSONL via `generate_synthetic_data.py` |
+| **Agentic behavior** | Autonomous monitor-assess-act loop: phase detector + form checker → coaching decision → speech output |
+| **Visual input** | Webcam → MediaPipe Pose WASM → real-time landmark tracking |
+| **Genuine on-device reason** | Sub-50ms feedback latency (impossible via cloud), workout video never leaves the device, offline operation |
+| **Voice (bonus)** | Web Speech API audio cues on form errors |
+
+**Key judge criteria:** Components must reinforce each other as a system, not sit side-by-side. Fine-tuning must make the coaching noticeably better. Demo must run live.
+
+**Time constraint:** LoRA fine-tuning on Gemma 2B targets <1 hour. Core demo is webcam → pose → rule coaching; Gemma is the differentiator.
+
+---
+
 ## Project Overview
 
 Squat Coach is a **fully local, offline** real-time squat form coaching application. Pose estimation runs in-browser via MediaPipe WASM; a local Python server serves static files. The optional Gemma 2B integration (via WebSocket) is a future enhancement — currently the coaching logic is rule-based JavaScript.
