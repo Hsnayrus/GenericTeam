@@ -3,7 +3,6 @@ set -e
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 echo "========================================="
 echo "  Squat Coach — Local Setup"
@@ -13,7 +12,11 @@ echo ""
 
 # ---- Python deps ----
 echo "[1/4] Installing Python dependencies..."
-"$PYTHON_BIN" -m pip install -r requirements.txt --quiet 2>/dev/null || "$PYTHON_BIN" -m pip install -r requirements.txt --break-system-packages --quiet
+if [ ! -d ".venv" ]; then
+  python3 -m venv .venv
+fi
+source .venv/bin/activate
+pip install -r requirements.txt --quiet
 
 # ---- MediaPipe WASM runtime ----
 MEDIAPIPE_VERSION="0.10.32"
@@ -78,7 +81,7 @@ echo "========================================="
 echo "  Setup complete!"
 echo ""
 echo "  Start the coach:"
-echo "    ${PYTHON_BIN} server.py"
+echo "    source .venv/bin/activate && python3 server.py"
 echo ""
 echo "  Then open:"
 echo "    http://localhost:8420"

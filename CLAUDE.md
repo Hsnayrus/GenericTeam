@@ -113,6 +113,35 @@ Angles are **bilaterally averaged** (left + right sides).
 
 Severity levels: `good` (green), `warn` (yellow), `bad` (red), `info` (cyan).
 
+## Rule: Architecture Reasoning Before Every Change
+
+**Before writing any code, you MUST trace the change through the full system.**
+
+This project has two tightly coupled layers:
+
+| Layer | Files |
+|---|---|
+| **Backend** | `server.py`, `generate_synthetic_data.py`, `benchmark_gemma.py` |
+| **Frontend** | `static/index.html` (all JS classes, UI, WebSocket client) |
+| **Protocol** | WebSocket `/ws/coach` — shared JSON contract between the two layers |
+
+**Required checklist for every change:**
+
+1. **Identify the primary file** being changed.
+2. **Determine which layer** it belongs to (backend / frontend / protocol).
+3. **Check cross-layer impact:**
+   - Changing `server.py` WebSocket output → does `index.html` need to handle new/changed fields?
+   - Changing `index.html` WebSocket payload → does `server.py` need to parse new fields?
+   - Changing a severity level, field name, or message format → update both sides.
+   - Adding a new Python endpoint or route → does the frontend need to call it?
+   - Changing constants (thresholds, port, cooldowns) → verify the other layer doesn't hard-code the same value.
+4. **State the impact explicitly** in your response before making edits: "This change affects backend only / frontend only / both layers."
+5. **Make all necessary edits** in the same response — never leave a cross-layer change half-done.
+
+**Never assume a change is isolated.** When in doubt, search the other layer's file for the symbol, field name, or constant you're modifying.
+
+---
+
 ## Development Conventions
 
 - **No external CDN at runtime** — all assets must be served locally by `server.py`

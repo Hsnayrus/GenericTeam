@@ -1,6 +1,3 @@
-models/
-static/mediapipe/
-__pycache__/
 .venv/
 .env
 node_modules/
@@ -10,3 +7,13 @@ data/raw_sessions/
 data/results/
 data/extracted_frames/
 data/coach_eval_results.json
+**/.venv
+**/.env
+**/genericteam-terraform-sa.json
+**/*.pem*
+
+**/models/
+**/static/mediapipe/
+**/__pycache__/
+**/node_modules/
+**/data/

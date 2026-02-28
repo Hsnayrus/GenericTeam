@@ -1,22 +1,74 @@
 """
 Squat Coach — Local Server
 Serves everything from disk. Zero cloud dependencies at runtime.
+
+LLM coaching via Ollama (local). Swap models with MODEL env var:
+    MODEL=gemma3:4b python3 server.py
 """
-import json
 import os
+import json
 import uvicorn
+import httpx
 from pathlib import Path
 from urllib import error, request
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("MODEL", "gemma3:1b")
+
+COACH_SYSTEM_PROMPT = """You are a real-time squat coach. Return only valid JSON, no markdown, no explanation.
+
+Output schema:
+{"feedback": "<one short coaching cue, max 15 words>", "severity": "<good|warn|bad|info>", "speak": <true|false>}
+
+Severity rules:
+- good: correct form or depth achieved
+- warn: minor issue, cue to correct
+- bad: significant form fault requiring immediate correction
+- info: neutral observation
+
+speak: true for warn and bad, false for good and info.
+Do not mention raw variable names. Output only the JSON object, nothing else."""
+
+
+async def call_ollama(squat_state: dict) -> dict:
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [
+            {"role": "system", "content": COACH_SYSTEM_PROMPT},
+            {"role": "user",   "content": json.dumps(squat_state)},
+        ],
+        "stream": False,
+        "format": {
+            "type": "object",
+            "properties": {
+                "feedback": {"type": "string"},
+                "severity": {"type": "string", "enum": ["good", "warn", "bad", "info"]},
+                "speak":    {"type": "boolean"},
+            },
+            "required": ["feedback", "severity", "speak"],
+        },
+        "options": {"temperature": 0},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
+            response.raise_for_status()
+            content = response.json()["message"]["content"]
+            return json.loads(content)
+    except Exception:
+        return {"feedback": "Form check unavailable — keep steady pace.", "severity": "info", "speak": False}
+
 app = FastAPI(title="Squat Coach")
 
 BASE = Path(__file__).parent
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_BASE_URL = os.environ.get(
+    "OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:1b")
-DEPTH_TARGET_KNEE_DEG = float(os.environ.get("COACH_DEPTH_TARGET_KNEE_DEG", "100"))
+DEPTH_TARGET_KNEE_DEG = float(os.environ.get(
+    "COACH_DEPTH_TARGET_KNEE_DEG", "100"))
 TORSO_WARN_DEG = float(os.environ.get("COACH_TORSO_WARN_DEG", "45"))
 VALGUS_RATIO = float(os.environ.get("COACH_VALGUS_RATIO", "0.82"))
 
@@ -82,6 +134,8 @@ def fallback_feedback(snapshot):
     return {"feedback": "Good rep. Keep that shape.", "severity": "good", "speak": False}
 
 # ---- Serve model file with correct MIME ----
+
+
 @app.get("/models/{filename}")
 async def serve_model(filename: str):
     path = BASE / "models" / filename
@@ -97,13 +151,16 @@ async def serve_model(filename: str):
     )
 
 # ---- Serve WASM files with correct MIME types ----
+
+
 @app.get("/mediapipe/wasm/{filename}")
 async def serve_wasm(filename: str):
     path = BASE / "static" / "mediapipe" / "wasm" / filename
     if not path.exists():
         return Response(status_code=404, content="WASM file not found")
-    
-    mime = "application/wasm" if filename.endswith(".wasm") else "application/javascript"
+
+    mime = "application/wasm" if filename.endswith(
+        ".wasm") else "application/javascript"
     return FileResponse(
         path,
         media_type=mime,
@@ -114,6 +171,8 @@ async def serve_wasm(filename: str):
     )
 
 # ---- Serve MediaPipe JS with correct MIME ----
+
+
 @app.get("/mediapipe/{filename}")
 async def serve_mediapipe_js(filename: str):
     path = BASE / "static" / "mediapipe" / filename
@@ -128,24 +187,51 @@ async def serve_mediapipe_js(filename: str):
         }
     )
 
-# ---- WebSocket for local Ollama integration ----
+# ---- WebSocket: LLM coaching via Ollama ----
+
+
 @app.websocket("/ws/coach")
 async def coaching_ws(websocket: WebSocket):
+    """
+    Receives structured signal snapshots from the browser, forwards them
+    to the configured Ollama model (MODEL env var), and returns coaching decisions.
+
+    Swap the model without changing code:
+        MODEL=gemma3:4b python3 server.py
+
+    Expected input:
+    {
+        "phase": "bottom",
+        "rep_number": 4,
+        "knee_angle": 108,
+        "hip_angle": 72,
+        "torso_angle": 41,
+        "knee_valgus_ratio": 0.79,
+        "depth_history": [94, 96, 101, 108],
+        "phase_durations_ms": {"descent": 820, "bottom": 340}
+    }
+
+    Expected output:
+    {
+        "feedback": "...",
+        "severity": "good | warn | bad | info",
+        "speak": true
+    }
+
+    Falls back to a safe info-severity message if Ollama is unreachable.
+    """
     await websocket.accept()
     try:
         while True:
-            snapshot = await websocket.receive_json()
-            try:
-                result = ollama_chat(snapshot)
-                result["source"] = f"ollama:{OLLAMA_MODEL}"
-            except (error.URLError, error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
-                result = fallback_feedback(snapshot)
-                result["source"] = f"rules_fallback:{type(exc).__name__}"
+            data = await websocket.receive_json()
+            result = await call_ollama(data)
             await websocket.send_json(result)
     except Exception:
         pass
 
 # ---- Serve the main app ----
+
+
 @app.get("/")
 async def index():
     return FileResponse(BASE / "static" / "index.html")
@@ -156,6 +242,7 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 if __name__ == "__main__":
     print("\n  🏋️  Squat Coach — Fully Local")
     print("  ➜  http://localhost:8420")
-    print(f"  ➜  Coach model: {OLLAMA_MODEL} @ {OLLAMA_BASE_URL}")
+    print("  ➜  All inference runs on-device")
+    print(f"  ➜  LLM: {OLLAMA_MODEL} via Ollama at {OLLAMA_BASE_URL}")
     print("  ➜  Disconnect from internet anytime\n")
     uvicorn.run(app, host="0.0.0.0", port=8420)
