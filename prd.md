@@ -1,5 +1,49 @@
 # PRD — Squat Coach Local
 
+## Hackathon Requirements
+
+**Challenge:** Build a system combining a fine-tuned on-device model + agentic behavior + visual input, with a genuine reason to run on-device. Voice is an optional bonus.
+
+### Component Checklist
+
+| Component | Requirement | Implementation |
+| --------- | ----------- | -------------- |
+| **On-device model** | Fine-tuned Gemma family model | Gemma 2B (or 3 4B) via MLX; fine-tuned with LoRA on JSONL from `generate_synthetic_data.py` |
+| **Agentic behavior** | System decides and acts autonomously | `PhaseDetector` state machine triggers `FormChecker` → `FeedbackEngine` (visual + speech) → WebSocket coaching loop |
+| **Visual input** | Camera/video feeds into the system | Webcam → MediaPipe Pose Lite WASM → bilateral angle computation → phase + form analysis |
+| **On-device justification** | Must not be "cloud with local runtime" | (1) <50ms feedback latency physically impossible with cloud round-trip, (2) workout video cannot leave device, (3) works fully offline |
+| **Voice (bonus)** | Natural voice I/O adds value | Web Speech API TTS for real-time form cues (e.g. "go deeper", "knees out") |
+
+### Why On-Device Genuinely Matters Here
+
+- **Latency:** Form correction must happen within the rep (~300–800ms descent). Cloud adds 100–500ms+ — too slow to be actionable.
+- **Privacy:** Users won't stream workout video to a server. Local inference removes the trust barrier entirely.
+- **Offline:** Gyms often have poor connectivity. The app works without any network after setup.
+- **Economics:** Per-call API pricing for real-time 15fps inference is prohibitive. Local model = zero marginal cost.
+
+### Fine-Tuning Strategy
+
+- **Base model:** Gemma 2B (MLX) or Gemma 3 4B depending on available time
+- **Method:** LoRA fine-tuning (<1 hour target on Apple Silicon M-series)
+- **Data:** `generate_synthetic_data.py` → 6-label JSONL (good_rep, shallow_depth, knee_valgus, forward_lean, cropped_feet, bad_side_view)
+- **Goal:** Gemma replaces/augments hardcoded `FormChecker` rules with pattern-learned coaching that generalizes to edge cases
+
+### System Integration (How Components Reinforce Each Other)
+
+```
+[Visual] Webcam → MediaPipe WASM → pose landmarks
+    ↓
+[Agent] PhaseDetector (state) → FormChecker (rules) → GemmaClient (learned)
+    ↓
+[Voice] FeedbackEngine → Web Speech API TTS
+    ↓
+[Data loop] SessionRecorder → JSONL → fine-tune → better Gemma coaching
+```
+
+The visual feed drives the agent; the agent's fine-tuned model produces coaching; the coaching shapes the next session's fine-tuning data. The components are a closed loop, not independent modules.
+
+---
+
 ## Purpose
 
 A fully offline, privacy-first, real-time squat form coaching application.
