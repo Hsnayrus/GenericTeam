@@ -11,7 +11,7 @@ echo "========================================="
 echo ""
 
 # ---- Python deps ----
-echo "[1/4] Installing Python dependencies..."
+echo "[1/5] Installing Python dependencies..."
 if [ ! -d ".venv" ]; then
   python3 -m venv .venv
 fi
@@ -27,7 +27,7 @@ mkdir -p "$WASM_DIR"
 mkdir -p "$JS_DIR"
 mkdir -p "models"
 
-echo "[2/4] Preparing MediaPipe WASM runtime..."
+echo "[2/5] Preparing MediaPipe WASM runtime..."
 WASM_BASE="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm"
 WASM_FILES=(
   "vision_wasm_internal.js"
@@ -50,7 +50,7 @@ for f in "${WASM_FILES[@]}"; do
 done
 
 # ---- MediaPipe JS bundle ----
-echo "[3/4] Preparing MediaPipe JS bundle..."
+echo "[3/5] Preparing MediaPipe JS bundle..."
 if [ ! -f "$JS_DIR/vision_bundle.mjs" ]; then
   if [ -f "$NODE_MEDIAPIPE_DIR/vision_bundle.mjs" ]; then
     cp "$NODE_MEDIAPIPE_DIR/vision_bundle.mjs" "$JS_DIR/vision_bundle.mjs"
@@ -65,7 +65,7 @@ else
 fi
 
 # ---- Pose model ----
-echo "[4/4] Downloading pose landmarker model (~4MB)..."
+echo "[4/5] Downloading pose landmarker model (~4MB)..."
 MODEL_DIR="models"
 MODEL_FILE="$MODEL_DIR/pose_landmarker_lite.task"
 if [ ! -f "$MODEL_FILE" ]; then
@@ -76,12 +76,27 @@ else
   echo "  ✓ pose_landmarker_lite.task (cached)"
 fi
 
+# ---- MLX model pre-download ----
+echo "[5/5] Pre-downloading MLX coaching model..."
+MLX_MODEL="${MODEL:-mlx-community/gemma-3-1b-it-4bit}"
+python3 -c "
+from mlx_lm import load
+import sys
+model_id = '$MLX_MODEL'
+print(f'  Fetching {model_id} ...')
+load(model_id)
+print(f'  ✓ {model_id} (cached)')
+"
+
 echo ""
 echo "========================================="
 echo "  Setup complete!"
 echo ""
 echo "  Start the coach:"
 echo "    source .venv/bin/activate && python3 server.py"
+echo ""
+echo "  To use a fine-tuned adapter:"
+echo "    MLX_ADAPTER_PATH=adapters/ python3 server.py"
 echo ""
 echo "  Then open:"
 echo "    http://localhost:8420"

@@ -69,7 +69,7 @@ Where each layer fits:
 | Pose estimation | Browser (WASM+WebGL) | MediaPipe Pose |
 | State extraction | Browser (JS) | Angles, phase, rep metrics, setup gate |
 | Recording/export | Browser (JS) | Exports session JSON today |
-| Local coaching model | Local runtime / VM | Gemma via Ollama for evals today |
+| Local coaching model | Local runtime / VM | Gemma via MLX (in-process, Apple Silicon) |
 | UI + audio | Browser | Overlay + speech |
 
 Recommended split:
@@ -166,18 +166,7 @@ pip install -U google-genai
 npm install
 ```
 
-If Ollama is not already installed on the VM, install it first, then start it and pull the eval models:
-
-```bash
-ollama serve
-```
-
-In another shell:
-
-```bash
-ollama pull gemma3:1b
-ollama pull gemma3:4b
-```
+MLX and the Gemma model weights are installed via `pip install -r requirements.txt`. On first run, `mlx_lm.load()` downloads the model from HuggingFace and caches it locally. No separate server process is needed.
 
 Put exported session assets on the VM under a data folder such as:
 
@@ -427,7 +416,7 @@ The repo now includes a schema-aligned evaluator:
 ```bash
 python3 evaluate_coach_dataset.py --backend gold
 python3 evaluate_coach_dataset.py --backend rules
-python3 evaluate_coach_dataset.py --backend ollama --model gemma3:1b
+python3 evaluate_coach_dataset.py --backend mlx --model mlx-community/gemma-3-1b-it-4bit
 ```
 
 What it measures today:
@@ -490,8 +479,7 @@ python3 summarize_session_baseline.py \
 
 ```bash
 python3 evaluate_coach_dataset.py --backend rules
-python3 evaluate_coach_dataset.py --backend ollama --model gemma3:1b
-python3 evaluate_coach_dataset.py --backend ollama --model gemma3:4b
+python3 evaluate_coach_dataset.py --backend mlx --model mlx-community/gemma-3-1b-it-4bit
 ```
 
 ### 5. Generate teacher data only if needed
@@ -610,8 +598,7 @@ Equivalent `make` targets:
 make clean-session RAW_SESSION=data/raw_sessions/session.offline.json
 make baseline-summary CLEAN_SESSION=data/results/session.cleaned.json
 make eval-rules
-make eval-ollama-1b
-make eval-ollama-4b
+make eval-mlx
 make compare-session CLEAN_SESSION=data/results/session.cleaned.json SESSION_VIDEO=data/raw_videos/session.webm REP=3
 make review-rep CLEAN_SESSION=data/results/session.cleaned.json SESSION_VIDEO=data/raw_videos/session.webm REP=3
 make teacher-generate
