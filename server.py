@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import time
 import uvicorn
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -37,10 +38,14 @@ logger.add(
 
 MLX_MODEL = os.environ.get("MODEL", "mlx-community/gemma-3-1b-it-4bit")
 MLX_ADAPTER_PATH = os.environ.get("MLX_ADAPTER_PATH", None) or None
+MLX_MAX_TOKENS = int(os.environ.get("MLX_MAX_TOKENS", "48"))
 
 DEPTH_TARGET_KNEE_DEG = float(os.environ.get("COACH_DEPTH_TARGET_KNEE_DEG", "100"))
 TORSO_WARN_DEG = float(os.environ.get("COACH_TORSO_WARN_DEG", "45"))
 VALGUS_RATIO = float(os.environ.get("COACH_VALGUS_RATIO", "0.82"))
+COACH_MIN_INTERVAL_S = float(os.environ.get("COACH_MIN_INTERVAL_S", "0.35"))
+COACH_REPEAT_COOLDOWN_S = float(os.environ.get("COACH_REPEAT_COOLDOWN_S", "1.5"))
+COACH_LOG_PATH = Path(os.environ.get("COACH_LOG_PATH", str(Path("logs") / "coach_events.jsonl")))
 
 COACH_SYSTEM_PROMPT = """You are a real-time squat coach. Return only valid JSON, no markdown, no explanation.
 
@@ -59,6 +64,16 @@ Do not mention raw variable names. Output only the JSON object, nothing else."""
 app = FastAPI(title="Squat Coach")
 
 BASE = Path(__file__).parent
+
+CANONICAL_LIVE_CUES = (
+    "Chest up.",
+    "Go deeper.",
+    "Good depth.",
+    "Step back so I can see you.",
+    "Move closer so I can see you.",
+    "Turn sideways to the camera.",
+    "Fix your camera setup.",
+)
 
 # ---- Load MLX model once at startup ----
 try:
@@ -99,7 +114,7 @@ def _mlx_infer_sync(squat_state: dict) -> dict:
     prompt = _mlx_tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    raw = generate(_mlx_model, _mlx_tokenizer, prompt=prompt, max_tokens=80, verbose=False)
+    raw = generate(_mlx_model, _mlx_tokenizer, prompt=prompt, max_tokens=MLX_MAX_TOKENS, verbose=False)
     match = re.search(r'\{[^{}]+\}', raw, re.DOTALL)
     if match:
         return json.loads(match.group())
@@ -172,6 +187,74 @@ def fallback_feedback(snapshot: dict) -> dict:
     if recent_depth and max(recent_depth[-3:]) > DEPTH_TARGET_KNEE_DEG + 8:
         return {"feedback": "You are cutting depth high. Stay patient into the bottom.", "severity": "warn", "speak": True}
     return {"feedback": "Good rep. Keep that shape.", "severity": "good", "speak": False}
+
+
+def deterministic_setup_feedback(snapshot: dict) -> dict | None:
+    if snapshot.get("is_setup"):
+        if not snapshot.get("side_view_ok", True):
+            return {"feedback": "Turn sideways to the camera.", "severity": "info", "speak": True}
+        if not snapshot.get("head_visible", True) or not snapshot.get("feet_visible", True):
+            return {"feedback": "Fix your camera setup.", "severity": "info", "speak": True}
+        if snapshot.get("too_close"):
+            return {"feedback": "Step back so I can see you.", "severity": "info", "speak": True}
+        if snapshot.get("too_far"):
+            return {"feedback": "Move closer so I can see you.", "severity": "info", "speak": True}
+    return None
+
+
+def canonicalize_feedback(text: str) -> str:
+    value = (text or "").strip()
+    lowered = value.lower()
+    for cue in CANONICAL_LIVE_CUES:
+        if lowered == cue.lower():
+            return cue
+    mapping = (
+        (("chest", "lean"), "Chest up."),
+        (("chest",), "Chest up."),
+        (("deeper",), "Go deeper."),
+        (("depth", "good"), "Good depth."),
+        (("good", "depth"), "Good depth."),
+        (("step back",), "Step back so I can see you."),
+        (("move closer",), "Move closer so I can see you."),
+        (("turn sideways",), "Turn sideways to the camera."),
+        (("camera setup",), "Fix your camera setup."),
+    )
+    for needles, cue in mapping:
+        if all(needle in lowered for needle in needles):
+            return cue
+    return value
+
+
+def log_event(payload: dict) -> None:
+    COACH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with COACH_LOG_PATH.open("a") as handle:
+        handle.write(json.dumps(payload) + "\n")
+
+
+def apply_runtime_controls(result: dict, state: dict) -> dict:
+    now = time.monotonic()
+    result = dict(result)
+    result["feedback"] = canonicalize_feedback(result.get("feedback", ""))
+
+    last_emit_at = state.get("last_emit_at", 0.0)
+    last_feedback = state.get("last_feedback", "")
+    recent = now - last_emit_at
+    same_feedback = result["feedback"] == last_feedback
+
+    if recent < COACH_MIN_INTERVAL_S:
+        cached = dict(state.get("last_result") or result)
+        cached["source"] = f"{cached.get('source', 'cached')}:cadence_gate"
+        cached["speak"] = False
+        return cached
+
+    if same_feedback and recent < COACH_REPEAT_COOLDOWN_S:
+        result["speak"] = False
+        result["source"] = f"{result.get('source', 'mlx')}:repeat_gate"
+
+    state["last_emit_at"] = now
+    state["last_feedback"] = result["feedback"]
+    state["last_result"] = dict(result)
+    return result
 
 
 # ---- Serve model file with correct MIME ----
@@ -263,11 +346,19 @@ async def coaching_ws(websocket: WebSocket):
         }
     """
     await websocket.accept()
+    state = {"last_emit_at": 0.0, "last_feedback": "", "last_result": None}
     logger.info(f"WebSocket client connected to /ws/coach (model={MLX_MODEL})")
     await websocket.send_json({"type": "hello", "model": MLX_MODEL})
     try:
         while True:
             data = await websocket.receive_json()
+            setup_result = deterministic_setup_feedback(data)
+            if setup_result is not None:
+                setup_result["source"] = "rules_setup_gate"
+                final = apply_runtime_controls(setup_result, state)
+                log_event({"ts": time.time(), "snapshot": data, "result": final})
+                await websocket.send_json(final)
+                continue
             phase = data.get("phase")
             rep = data.get("rep_number")
             logger.debug(
@@ -284,14 +375,17 @@ async def coaching_ws(websocket: WebSocket):
                     valgus_ratio=data.get("knee_valgus_ratio"),
                 ).info(f"Rep {rep} bottom reached")
             result = await call_mlx(data)
+            result["source"] = f"mlx:{MLX_MODEL}"
+            final = apply_runtime_controls(result, state)
             logger.bind(
                 rep_number=rep,
                 phase=phase,
-                severity=result.get("severity"),
-                speak=result.get("speak"),
-            ).info(f"Coach decision: {result.get('feedback')}")
-            await websocket.send_json(result)
-            logger.debug(f"Response sent to client: severity={result.get('severity')} speak={result.get('speak')}")
+                severity=final.get("severity"),
+                speak=final.get("speak"),
+            ).info(f"Coach decision: {final.get('feedback')}")
+            log_event({"ts": time.time(), "snapshot": data, "result": final})
+            await websocket.send_json(final)
+            logger.debug(f"Response sent to client: severity={final.get('severity')} speak={final.get('speak')}")
     except WebSocketDisconnect:
         pass
     except json.JSONDecodeError as exc:
@@ -319,4 +413,6 @@ if __name__ == "__main__":
     logger.info(f"LLM: {MLX_MODEL} (in-process)")
     if MLX_ADAPTER_PATH:
         logger.info(f"LoRA adapters: {MLX_ADAPTER_PATH}")
+    logger.info(f"MLX max tokens: {MLX_MAX_TOKENS}")
+    logger.info(f"Coach log path: {COACH_LOG_PATH}")
     uvicorn.run(app, host="0.0.0.0", port=8420)

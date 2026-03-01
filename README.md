@@ -125,6 +125,42 @@ python3 server.py
 # 6. Disconnect from internet — everything still works
 ```
 
+## MLX Demo Run
+
+If the teammate already has an MLX model directory on disk, point `MODEL` at that path:
+
+```bash
+cd GenericTeam
+python3 -m pip install -r requirements.txt
+
+MODEL=/absolute/path/to/local-mlx-model \
+MLX_ADAPTER_PATH=/absolute/path/to/local-mlx-adapter \
+bash run_mlx_demo.sh
+```
+
+If you want MLX to pull the model from Hugging Face instead, use the repo id:
+
+```bash
+cd GenericTeam
+python3 -m pip install -r requirements.txt
+
+MODEL=mlx-community/gemma-3-1b-it-4bit \
+bash run_mlx_demo.sh
+```
+
+Runtime knobs for the smoother demo:
+- `MLX_MAX_TOKENS`
+- `COACH_MIN_INTERVAL_S`
+- `COACH_REPEAT_COOLDOWN_S`
+- `COACH_LOG_PATH`
+
+What is logged:
+- every live snapshot
+- final emitted cue
+- whether setup gating or runtime suppression changed the result
+
+The JSONL log lands at `logs/coach_events.jsonl`.
+
 ## Branch Split
 
 Use these branches for separation of concerns:
