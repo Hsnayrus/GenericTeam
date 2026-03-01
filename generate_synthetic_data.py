@@ -3,6 +3,7 @@ import argparse
 import json
 import random
 from pathlib import Path
+from loguru import logger
 
 
 SEED_CASES = [
@@ -113,7 +114,7 @@ def main():
         for row in rows:
             handle.write(json.dumps(row) + "\n")
 
-    print(f"Wrote {len(rows)} synthetic examples to {output}")
+    logger.info(f"Wrote {len(rows)} synthetic examples to {output}")
 
 
 if __name__ == "__main__":

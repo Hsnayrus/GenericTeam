@@ -1061,18 +1061,25 @@ class GemmaClient {
       this.ws = new WebSocket(`${protocol}://${location.host}/ws/coach`);
       this.ws.onopen = () => {
         this.connected = true;
+        this.modelName = null;
         CONFIG.gemmaEnabled = true;
-        document.getElementById('coach-model-status').textContent = '● Local coach connected';
+        document.getElementById('coach-model-status').textContent = '● connecting…';
         document.getElementById('coach-model-status').className = 'active';
       };
       this.ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
+        if (data.type === 'hello') {
+          this.modelName = data.model;
+          document.getElementById('coach-model-status').textContent = `● ${data.model}`;
+          return;
+        }
         if (this.onFeedback) this.onFeedback(data);
       };
       this.ws.onclose = () => {
         this.connected = false;
         CONFIG.gemmaEnabled = false;
-        document.getElementById('coach-model-status').textContent = '○ Local coach disconnected';
+        const label = this.modelName ? `○ ${this.modelName} disconnected` : '○ disconnected';
+        document.getElementById('coach-model-status').textContent = label;
         document.getElementById('coach-model-status').className = 'pending';
       };
       this.ws.onerror = () => { this.connected = false; };

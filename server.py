@@ -6,14 +6,30 @@ LLM coaching via Ollama (local). Swap models with MODEL env var:
     MODEL=gemma3:4b python3 server.py
 """
 import os
+import sys
 import json
 import uvicorn
 import httpx
 from pathlib import Path
 from urllib import error, request
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
+from loguru import logger
+
+logger.remove()
+logger.add(
+    sys.stderr,
+    level="INFO",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}",
+)
+logger.add(
+    "logs/squat_coach.log",
+    rotation="10 MB",
+    retention="7 days",
+    level="DEBUG",
+    serialize=True,
+)
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("MODEL", "gemma3:1b")
@@ -52,13 +68,21 @@ async def call_ollama(squat_state: dict) -> dict:
         },
         "options": {"temperature": 0},
     }
+    _log = logger.bind(phase=squat_state.get("phase"), rep_number=squat_state.get("rep_number"))
+    _log.debug(f"Calling Ollama ({OLLAMA_MODEL})")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload)
             response.raise_for_status()
             content = response.json()["message"]["content"]
-            return json.loads(content)
-    except Exception:
+            result = json.loads(content)
+            _log.debug(
+                f"Ollama response: severity={result.get('severity')} speak={result.get('speak')} "
+                f"feedback=\"{result.get('feedback')}\""
+            )
+            return result
+    except Exception as exc:
+        _log.error(f"Ollama call failed, using fallback: {exc}")
         return {"feedback": "Form check unavailable — keep steady pace.", "severity": "info", "speak": False}
 
 app = FastAPI(title="Squat Coach")
@@ -221,13 +245,43 @@ async def coaching_ws(websocket: WebSocket):
     Falls back to a safe info-severity message if Ollama is unreachable.
     """
     await websocket.accept()
+    logger.info(f"WebSocket client connected to /ws/coach (model={OLLAMA_MODEL})")
+    await websocket.send_json({"type": "hello", "model": OLLAMA_MODEL})
     try:
         while True:
             data = await websocket.receive_json()
+            phase = data.get("phase")
+            rep = data.get("rep_number")
+            logger.debug(
+                f"Snapshot received: phase={phase} rep={rep} "
+                f"knee={data.get('knee_angle')} hip={data.get('hip_angle')} "
+                f"torso={data.get('torso_angle')} valgus={data.get('knee_valgus_ratio')}"
+            )
+            if phase == "bottom":
+                logger.bind(
+                    rep_number=rep,
+                    phase=phase,
+                    knee_angle=data.get("knee_angle"),
+                    torso_angle=data.get("torso_angle"),
+                    valgus_ratio=data.get("knee_valgus_ratio"),
+                ).info(f"Rep {rep} bottom reached")
             result = await call_ollama(data)
+            logger.bind(
+                rep_number=rep,
+                phase=phase,
+                severity=result.get("severity"),
+                speak=result.get("speak"),
+            ).info(f"Coach decision: {result.get('feedback')}")
             await websocket.send_json(result)
-    except Exception:
+            logger.debug(f"Response sent to client: severity={result.get('severity')} speak={result.get('speak')}")
+    except WebSocketDisconnect:
         pass
+    except json.JSONDecodeError as exc:
+        logger.error(f"Bad WebSocket message (invalid JSON): {exc}")
+    except Exception as exc:
+        logger.warning(f"WebSocket /ws/coach closed with error: {exc}")
+    finally:
+        logger.info("WebSocket client disconnected from /ws/coach")
 
 # ---- Serve the main app ----
 
@@ -240,9 +294,8 @@ async def index():
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 if __name__ == "__main__":
-    print("\n  🏋️  Squat Coach — Fully Local")
-    print("  ➜  http://localhost:8420")
-    print("  ➜  All inference runs on-device")
-    print(f"  ➜  LLM: {OLLAMA_MODEL} via Ollama at {OLLAMA_BASE_URL}")
-    print("  ➜  Disconnect from internet anytime\n")
+    logger.info("Squat Coach — Fully Local")
+    logger.info("Listening at http://localhost:8420")
+    logger.info("All inference runs on-device")
+    logger.info(f"LLM: {OLLAMA_MODEL} via Ollama at {OLLAMA_BASE_URL}")
     uvicorn.run(app, host="0.0.0.0", port=8420)
