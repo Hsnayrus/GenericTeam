@@ -2,12 +2,13 @@
 import argparse
 import json
 import os
-import re
 import time
 from collections import defaultdict
 from pathlib import Path
+from urllib import error, request
 
 from clean_offline_session import clean_session, load_json
+from prompt_templates import COACH_RESPONSE_SCHEMA, build_gemma_messages, sanitize_coach_output
 from summarize_session_baseline import summarize
 
 try:
@@ -34,16 +35,6 @@ Rules:
 """
 
 
-GEMMA_SYSTEM = """You are a squat coach. You receive a compact side-view squat state.
-Return strict JSON only with this schema:
-{
-  "say": string,
-  "priority": "safety|depth|knees|encouragement",
-  "reason": string
-}
-Keep say to one short sentence. Focus on the highest-priority issue only."""
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Batch-review exported squat sessions with Gemini and local Gemma using pose data only.")
     parser.add_argument("--input-glob", default="/Users/jwalinshah/Downloads/side-floor-session-*.json")
@@ -51,7 +42,8 @@ def parse_args():
     parser.add_argument("--output-dir", default="data/results/batch_pose_review")
     parser.add_argument("--min-confidence", type=float, default=0.3)
     parser.add_argument("--gemini-models", nargs="+", default=["models/gemini-2.5-pro", "models/gemini-3.1-pro-preview"])
-    parser.add_argument("--gemma-models", nargs="+", default=["mlx-community/gemma-3-1b-it-4bit"])
+    parser.add_argument("--gemma-models", nargs="+", default=["gemma3:1b", "gemma3:4b"])
+    parser.add_argument("--ollama-base-url", default="http://127.0.0.1:11434")
     return parser.parse_args()
 
 
@@ -173,12 +165,6 @@ def parse_json_response(text):
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
         return {"raw_text": text}
 
 
@@ -201,58 +187,33 @@ def call_gemini(client, model, summary_payload):
     return parse_json_response(text), elapsed_ms
 
 
-def mlx_chat(mlx_model, mlx_tokenizer, summary_payload):
-    """Run MLX inference for one squat rep summary and return a parsed coaching decision.
-
-    Parameters
-    ----------
-    mlx_model : object
-        Loaded MLX model from ``mlx_lm.load()``.
-    mlx_tokenizer : object
-        Matching tokenizer from ``mlx_lm.load()``.
-    summary_payload : dict
-        Pose summary payload for one rep.
-
-    Returns
-    -------
-    tuple of (dict, float)
-        Parsed coaching decision and inference latency in milliseconds.
-    """
-    from mlx_lm import generate
-    messages = [
-        {"role": "system", "content": GEMMA_SYSTEM},
-        {"role": "user", "content": json.dumps(summary_payload)},
-    ]
-    prompt = mlx_tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+def ollama_chat(model, summary_payload, base_url):
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": build_gemma_messages(summary_payload),
+            "stream": False,
+            "format": COACH_RESPONSE_SCHEMA,
+            "options": {"temperature": 0},
+        }
+    ).encode()
+    req = request.Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=body,
+        headers={"Content-Type": "application/json"},
     )
     start = time.perf_counter()
-    raw = generate(mlx_model, mlx_tokenizer, prompt=prompt, max_tokens=150, verbose=False)
+    try:
+        with request.urlopen(req, timeout=600) as response:
+            parsed = json.loads(response.read().decode())
+    except error.HTTPError as exc:
+        detail = exc.read().decode()
+        raise RuntimeError(f"Ollama HTTP {exc.code}: {detail}") from exc
     elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-    return parse_json_response(raw), elapsed_ms
+    return sanitize_coach_output(summary_payload, parse_json_response(parsed["message"]["content"])), elapsed_ms
 
 
-def review_session(client, session_payload, gemini_models, gemma_models, mlx_model_cache):
-    """Review all reps in a session using Gemini and local MLX models.
-
-    Parameters
-    ----------
-    client : google.genai.Client
-        Authenticated Gemini client.
-    session_payload : dict
-        Cleaned session JSON with rep summaries.
-    gemini_models : list of str
-        Gemini model IDs to use for teacher reviews.
-    gemma_models : list of str
-        MLX model IDs (HuggingFace or local path) for student reviews.
-    mlx_model_cache : dict
-        Pre-loaded ``{model_id: (mlx_model, mlx_tokenizer)}`` to avoid reloading.
-
-    Returns
-    -------
-    list of dict
-        Per-rep review rows with gemini and gemma outputs.
-    """
+def review_session(client, session_payload, gemini_models, gemma_models, ollama_base_url):
     reps = session_payload.get("rep_summaries") or derive_rep_summaries(session_payload)
     reviews = []
     for rep in reps:
@@ -267,10 +228,9 @@ def review_session(client, session_payload, gemini_models, gemma_models, mlx_mod
         for model in gemini_models:
             parsed, latency_ms = call_gemini(client, model, summary_payload)
             row["gemini"][model] = {"review": parsed, "latency_ms": latency_ms}
-        for model_id in gemma_models:
-            mlx_model, mlx_tokenizer = mlx_model_cache[model_id]
-            parsed, latency_ms = mlx_chat(mlx_model, mlx_tokenizer, summary_payload)
-            row["gemma"][model_id] = {"review": parsed, "latency_ms": latency_ms}
+        for model in gemma_models:
+            parsed, latency_ms = ollama_chat(model, summary_payload, ollama_base_url)
+            row["gemma"][model] = {"review": parsed, "latency_ms": latency_ms}
         reviews.append(row)
     return reviews
 
@@ -311,12 +271,6 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load each MLX model once before iterating sessions
-    from mlx_lm import load as mlx_load
-    mlx_model_cache = {}
-    for model_id in args.gemma_models:
-        mlx_model_cache[model_id] = mlx_load(model_id)
-
     batch_result = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "input_glob": args.input_glob,
@@ -333,7 +287,7 @@ def main():
         if not cleaned_payload.get("rep_summaries"):
             cleaned_payload["rep_summaries"] = derived_raw_reps
         baseline = summarize(cleaned_payload, 100.0, 45.0)
-        reviews = review_session(client, cleaned_payload, args.gemini_models, args.gemma_models, mlx_model_cache)
+        reviews = review_session(client, cleaned_payload, args.gemini_models, args.gemma_models, args.ollama_base_url)
         session_dir = output_dir / input_path.stem
         session_dir.mkdir(parents=True, exist_ok=True)
         cleaned_path = session_dir / "cleaned.json"

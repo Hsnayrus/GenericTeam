@@ -218,7 +218,7 @@
   #feedback-panel {
     bottom: 16px; left: 50%; transform: translateX(-50%);
     display: flex; flex-direction: column; gap: 6px;
-    align-items: center; max-width: 400px;
+    align-items: center; max-width: min(520px, calc(100vw - 32px));
     padding: 0; background: none; border: none; backdrop-filter: none;
   }
   .feedback-msg {
@@ -231,7 +231,11 @@
     font-size: 0.78rem; font-weight: 600;
     letter-spacing: 0.04em;
     animation: feedIn 0.3s ease-out;
-    text-align: center; white-space: nowrap;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+    line-height: 1.35;
   }
   .feedback-msg.good { color: var(--green); border-color: rgba(0,232,123,0.25); background: rgba(0,232,123,0.08); }
   .feedback-msg.warn { color: var(--yellow); border-color: rgba(255,210,63,0.25); background: rgba(255,210,63,0.08); }
@@ -508,7 +512,8 @@ import {
 // CONFIG
 // ============================================================
 const CONFIG = {
-  confidenceThreshold: 0.5,
+  confidenceThreshold: 0.5,       // Minimum confidence to record frame
+  trustedConfidence: 0.6,         // Higher threshold for phase detection (discard noisy data)
   emaAlpha: 0.7,
   standingAngle: 155,
   bottomAngle: 110,
@@ -518,17 +523,21 @@ const CONFIG = {
   valgusRatio: 0.82,
   decisionPersistMs: 250,
   feedbackCooldownMs: 2000,
-  audioCooldownMs: 3000,
+  audioCooldownMs: 4500,
+  feedbackDwellMs: 3600,
   // Gemma integration
   gemmaEnabled: false,
   gemmaAutoConnect: true,
   gemmaCallOnPhaseChange: true,
   gemmaCallIntervalMs: 2000,
-  setupReadyMs: 1500,
+  setupReadyMs: 500,  // Reduced from 1500 - unlock faster
   minBodyFill: 0.55,
   maxBodyFill: 0.9,
-  maxCenterOffset: 0.1,
+  maxCenterOffset: 0.15,          // Relaxed from 0.1 - Gemini said centering too strict
   sideViewSpreadMax: 0.18,
+  // Single-person lock
+  personLockEnabled: false,  // Disabled for hackathon - was blocking recording
+  personLockTolerance: 0.25,      // Max hip position drift before rejecting
 };
 
 const RECORDING_PROFILE = {
@@ -768,6 +777,69 @@ class SessionRecorder {
   }
 }
 
+// ============================================================
+// SINGLE-PERSON LOCK
+// Prevents tracker hijacking when another person enters frame
+// ============================================================
+class PersonLock {
+  constructor() {
+    this.lockedHipX = null;
+    this.lockedHipY = null;
+    this.lockConfidence = 0;
+    this.framesSinceLock = 0;
+  }
+
+  reset() {
+    this.lockedHipX = null;
+    this.lockedHipY = null;
+    this.lockConfidence = 0;
+    this.framesSinceLock = 0;
+  }
+
+  update(landmarks, avgConf) {
+    if (!CONFIG.personLockEnabled) return { locked: false, valid: true };
+
+    const leftHip = landmarks[LM.LEFT_HIP];
+    const rightHip = landmarks[LM.RIGHT_HIP];
+    if (!leftHip || !rightHip) return { locked: false, valid: false };
+
+    const hipX = (leftHip.x + rightHip.x) / 2;
+    const hipY = (leftHip.y + rightHip.y) / 2;
+
+    // Not yet locked - establish lock if confidence is good
+    if (this.lockedHipX === null) {
+      if (avgConf >= CONFIG.trustedConfidence) {
+        this.lockedHipX = hipX;
+        this.lockedHipY = hipY;
+        this.lockConfidence = avgConf;
+        this.framesSinceLock = 0;
+        return { locked: true, valid: true, newLock: true };
+      }
+      return { locked: false, valid: true };
+    }
+
+    // Already locked - check if current pose is the same person
+    const drift = Math.sqrt(
+      Math.pow(hipX - this.lockedHipX, 2) +
+      Math.pow(hipY - this.lockedHipY, 2)
+    );
+
+    this.framesSinceLock++;
+
+    // If drift is within tolerance, update lock position (allow gradual movement)
+    if (drift <= CONFIG.personLockTolerance) {
+      // Slowly update lock position to allow person to move
+      this.lockedHipX = this.lockedHipX * 0.95 + hipX * 0.05;
+      this.lockedHipY = this.lockedHipY * 0.95 + hipY * 0.05;
+      return { locked: true, valid: true, drift };
+    }
+
+    // Drift too large - likely a different person or tracker jumped
+    // Keep the lock but mark this frame as invalid
+    return { locked: true, valid: false, drift, reason: 'drift_exceeded' };
+  }
+}
+
 class SetupGate {
   constructor() {
     this.readySince = null;
@@ -822,7 +894,11 @@ class SetupGate {
   }
 
   update(analysis, now) {
-    const allGood = Object.values(analysis.checks).every(Boolean);
+    // HACKATHON MODE: Only require head visible to unlock
+    // All other checks (distance, center, view) are advisory only
+    // This ensures we can record data in any reasonable setup
+    const { head } = analysis.checks;
+    const allGood = head; // Just need to see your head
     if (allGood) {
       if (this.readySince == null) this.readySince = now;
       if (now - this.readySince >= CONFIG.setupReadyMs) this.locked = false;
@@ -1036,9 +1112,9 @@ class FeedbackEngine {
 
   speak(text) {
     if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.speaking) return;
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.15; u.pitch = 0.9; u.volume = 0.75;
+    u.rate = 0.78; u.pitch = 0.9; u.volume = 0.8;
     window.speechSynthesis.speak(u);
   }
 }
@@ -1189,7 +1265,7 @@ function updateFeedback(messages) {
     panel.appendChild(div);
   }
   clearTimeout(feedbackTimeout);
-  feedbackTimeout = setTimeout(() => { panel.innerHTML = ''; }, 2500);
+  feedbackTimeout = setTimeout(() => { panel.innerHTML = ''; }, CONFIG.feedbackDwellMs);
 }
 
 function updateSetupCheck(id, passed, label = passed ? 'PASS' : 'FAIL') {
@@ -1291,6 +1367,7 @@ async function main() {
   const feedbackEngine = new FeedbackEngine();
   const recorder = new SessionRecorder();
   const setupGate = new SetupGate();
+  const personLock = new PersonLock();
 
   // Try connecting to Gemma WebSocket
   const gemma = new GemmaClient();
@@ -1377,13 +1454,29 @@ async function main() {
     const confs = keyJoints.map(i => raw[i]?.visibility ?? 0);
     const avgConf = confs.reduce((a, b) => a + b) / confs.length;
     const minConf = Math.min(...confs);
-    const gatePass = minConf >= CONFIG.confidenceThreshold;
+    // HACKATHON: Use avgConf instead of minConf - ankles often have low visibility
+    const gatePass = avgConf >= 0.4;  // Relaxed from minConf >= 0.5
+    const trustedFrame = avgConf >= CONFIG.trustedConfidence;  // Higher bar for phase detection
     updateStats(fps, avgConf, gatePass);
+
+    // Single-person lock - prevent tracker hijacking
+    const lockStatus = personLock.update(raw, avgConf);
+    if (lockStatus.locked && !lockStatus.valid) {
+      // Tracker likely jumped to different person - skip this frame for phase detection
+      // but still record it for debugging
+      renderer.drawSkeleton(raw, { dimmed: true });
+      requestAnimationFrame(processFrame);
+      return;
+    }
 
     const setupAnalysis = setupGate.evaluate(raw, video.videoWidth || 1280, video.videoHeight || 720);
     const setupState = setupGate.update(setupAnalysis, now);
     updateSetupPanel(setupAnalysis, setupState);
+    const wasActive = repModeActive;
     repModeActive = !setupState.locked;
+    if (repModeActive && !wasActive) {
+      console.log('✅ SETUP UNLOCKED - Rep tracking active!', setupAnalysis.checks);
+    }
 
     const landmarks = smoother.update(raw);
     const provisionalMetrics = computeLiveMetrics(landmarks, phaseDetector.phase, repCount, now, phaseStartTime);
@@ -1439,14 +1532,23 @@ async function main() {
       };
     }
 
-    // Phase
-    const { phase, repComplete } = phaseDetector.update(kneeAngle);
+    // Phase - only update with trusted (high-confidence) frames
+    // This prevents noisy low-confidence data from corrupting phase detection
+    let phase = phaseDetector.phase;
+    let repComplete = false;
+    if (trustedFrame) {
+      const phaseResult = phaseDetector.update(kneeAngle);
+      phase = phaseResult.phase;
+      repComplete = phaseResult.repComplete;
+    }
     updatePhase(phase);
 
     // Track phase durations for Gemma
     if (phase !== lastPhase) {
       phaseDurations[lastPhase] = now - phaseStartTime;
       phaseStartTime = now;
+      // DEBUG: Log phase transitions to console
+      console.log(`📍 PHASE: ${lastPhase} → ${phase} | knee=${kneeAngle.toFixed(1)}° | conf=${avgConf.toFixed(2)} | trusted=${trustedFrame}`);
       lastPhase = phase;
       if (phase === Phase.DESCENDING) repStartTime = now;
     }
@@ -1461,6 +1563,7 @@ async function main() {
 
     if (repComplete) {
       repCount++;
+      console.log(`🏋️ REP ${repCount} COMPLETE! Bottom knee=${currentBottomMin?.knee_angle}°`);
       $('rep-count').textContent = repCount;
       updateFeedback([feedbackEngine.processRepComplete(repCount)]);
       recorder.addRepSummary({

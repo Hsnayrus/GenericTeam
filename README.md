@@ -373,6 +373,68 @@ The current product direction is no longer "mixed front + side." It is:
 
 The WebSocket endpoint at `/ws/coach` exists, but true local Gemma integration is still pending.
 
+MLX demo path:
+
+```bash
+source .venv/bin/activate
+python -m pip install mlx-lm
+COACH_BACKEND=mlx \
+MLX_MODEL=mlx-community/Qwen2.5-1.5B-Instruct-4bit \
+bash run_mlx_demo.sh
+```
+
+Optional adapter:
+
+```bash
+COACH_BACKEND=mlx \
+MLX_MODEL=/absolute/path/to/your/mlx-model \
+MLX_ADAPTER_PATH=/absolute/path/to/your/mlx-adapter \
+bash run_mlx_demo.sh
+```
+
+Notes:
+- live events are logged to `logs/coach_events.jsonl`
+- setup issues are gated before model inference
+- cadence and repeat cooldown are enforced in [`server.py`](/Users/jwalinshah/projects/squat-coach-local/server.py)
+- the current Hugging Face LoRA adapters need an MLX-compatible adapter path or a merged MLX model; they are not consumed directly by `mlx-lm` unless converted
+
+What the current local runtime already constrains:
+- structured JSON output through Ollama schema mode
+- deterministic or near-deterministic decoding through server-side options
+- short responses with bounded token budget
+- explicit severity enum: `good|warn|bad|info`
+
+Prompt-template reference:
+- [`GEMMA_PROMPTING.md`](/Users/jwalinshah/projects/squat-coach-local/GEMMA_PROMPTING.md)
+- [`prompt_templates.py`](/Users/jwalinshah/projects/squat-coach-local/prompt_templates.py)
+- [`evaluate_prompt_variants.py`](/Users/jwalinshah/projects/squat-coach-local/evaluate_prompt_variants.py)
+
+Runtime knobs in [`server.py`](/Users/jwalinshah/projects/squat-coach-local/server.py):
+- `OLLAMA_TEMPERATURE`
+- `OLLAMA_TOP_P`
+- `OLLAMA_TOP_K`
+- `OLLAMA_MIN_P`
+- `OLLAMA_REPEAT_PENALTY`
+- `OLLAMA_NUM_PREDICT`
+- `OLLAMA_SEED`
+- `OLLAMA_STOP` using `||` as the separator for multiple stop strings
+
+Example:
+
+```bash
+OLLAMA_MODEL=gemma3:4b \
+OLLAMA_TEMPERATURE=0 \
+OLLAMA_TOP_P=0.8 \
+OLLAMA_REPEAT_PENALTY=1.2 \
+OLLAMA_NUM_PREDICT=48 \
+OLLAMA_SEED=7 \
+python3 server.py
+```
+
+Important limitation:
+- this stack does not implement per-token logit biasing today
+- if you need true token suppression/boosting, grammar-constrained decoding, or custom logits processors, move inference to a backend that exposes token-level generation hooks instead of the current Ollama chat path
+
 Target model role:
 - input = compact squat state, not raw pixels
 - output = coaching decision and phrasing

@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import re
+import os
 from pathlib import Path
+from urllib import request
+
+from prompt_templates import (
+    COACH_RESPONSE_SCHEMA,
+    build_gemma_messages,
+    expected_priority_from_state,
+    rule_coach_output,
+    sanitize_coach_output,
+)
 
 
 def load_jsonl(path):
@@ -55,163 +64,32 @@ def has_knees_issue(row):
 
 
 def expected_priority(row):
-    mode = row["input"]["mode"]
-    if mode == "calibrate":
-        return "calibration"
-    if mode == "summary":
-        return "summary"
-    if has_framing_issue(row):
-        return "framing"
-    if has_quality_issue(row):
-        return "quality"
-    if has_safety_issue(row):
-        return "safety"
-    if has_depth_issue(row):
-        return "depth"
-    if has_knees_issue(row):
-        return "knees"
-    return "encouragement"
+    return expected_priority_from_state(row["input"])
 
 
 def rules_backend(row):
-    priority = expected_priority(row)
-    quality = row["input"]["quality"]
-    if priority == "framing":
-        if not quality["ankles_visible"]:
-            return {
-                "say": "Step back until both feet are visible.",
-                "priority": "framing",
-                "ui": {"highlight": "feet", "show_checklist": True},
-                "cooldown_s": 5.0,
-                "calibration_patch": None,
-            }
-        if not quality["head_visible"]:
-            return {
-                "say": "Raise the camera so your head stays in frame.",
-                "priority": "framing",
-                "ui": {"highlight": "head", "show_checklist": True},
-                "cooldown_s": 5.0,
-                "calibration_patch": None,
-            }
-        return {
-            "say": "Center yourself in frame before starting the set.",
-            "priority": "framing",
-            "ui": {"highlight": "center", "show_checklist": True},
-            "cooldown_s": 5.0,
-            "calibration_patch": None,
-        }
-    if priority == "quality":
-        return {
-            "say": "Hold still for a second so tracking can lock in.",
-            "priority": "quality",
-            "ui": {"highlight": "none", "show_checklist": True},
-            "cooldown_s": 4.0,
-            "calibration_patch": None,
-        }
-    if priority == "safety":
-        return {
-            "say": "Keep your chest up and reduce the forward lean.",
-            "priority": "safety",
-            "ui": {"highlight": "torso", "show_checklist": False},
-            "cooldown_s": 3.0,
-            "calibration_patch": None,
-        }
-    if priority == "depth":
-        return {
-            "say": "Sit a little deeper to reach your target depth.",
-            "priority": "depth",
-            "ui": {"highlight": "hips", "show_checklist": False},
-            "cooldown_s": 2.5,
-            "calibration_patch": None,
-        }
-    if priority == "knees":
-        return {
-            "say": "Push your knees out as you descend.",
-            "priority": "knees",
-            "ui": {"highlight": "knees", "show_checklist": False},
-            "cooldown_s": 3.0,
-            "calibration_patch": None,
-        }
-    if priority == "calibration":
-        current = row["input"]["calibration"]
-        return {
-            "say": "Calibration updated for this session.",
-            "priority": "calibration",
-            "ui": {"highlight": "none", "show_checklist": False},
-            "cooldown_s": 2.0,
-            "calibration_patch": {
-                "depth_target_knee_deg": min(115, current["depth_target_knee_deg"] + 5),
-            },
-        }
-    if priority == "summary":
-        return {
-            "say": "Strong set. Keep your chest tall on the next one.",
-            "priority": "summary",
-            "ui": {"highlight": "torso", "show_checklist": False},
-            "cooldown_s": 0.0,
-            "calibration_patch": None,
-        }
-    return {
-        "say": "Good rep. Keep it consistent.",
-        "priority": "encouragement",
-        "ui": {"highlight": "none", "show_checklist": False},
-        "cooldown_s": 2.0,
-        "calibration_patch": None,
-    }
+    return rule_coach_output(row["input"])
 
 
-MLX_SYSTEM = """You are a squat coach model. Return strict JSON only.
-Schema:
-{
-  "say": string,
-  "priority": "framing|quality|safety|depth|knees|summary|encouragement|calibration",
-  "ui": {"highlight": "feet|head|center|hips|knees|torso|none", "show_checklist": boolean},
-  "cooldown_s": number,
-  "calibration_patch": null or object
-}
-Rules:
-- If input.mode is live, assume you are coaching during a squat.
-- Prioritize framing first, then quality, then safety, then depth, then knees, then encouragement.
-- Keep say to one short sentence.
-- Do not mention raw variable names.
-- Output JSON only."""
-
-
-def mlx_backend(row, mlx_model, mlx_tokenizer):
-    """Run MLX inference for one evaluation row and return a parsed coaching decision.
-
-    Parameters
-    ----------
-    row : dict
-        One JSONL evaluation record with an ``input`` key.
-    mlx_model : object
-        Loaded MLX model from ``mlx_lm.load()``.
-    mlx_tokenizer : object
-        Matching tokenizer from ``mlx_lm.load()``.
-
-    Returns
-    -------
-    dict
-        Parsed coaching decision matching the coach output schema.
-
-    Raises
-    ------
-    ValueError
-        If the model output contains no parseable JSON object.
-    """
-    from mlx_lm import generate
-    messages = [
-        {"role": "system", "content": MLX_SYSTEM},
-        {"role": "user", "content": json.dumps(row["input"])},
-    ]
-    prompt = mlx_tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+def ollama_backend(row, model, base_url):
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": build_gemma_messages(row["input"]),
+            "stream": False,
+            "format": COACH_RESPONSE_SCHEMA,
+            "options": {"temperature": 0},
+        }
+    ).encode()
+    req = request.Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=body,
+        headers={"Content-Type": "application/json"},
     )
-    raw = generate(mlx_model, mlx_tokenizer, prompt=prompt, max_tokens=150, verbose=False)
-    match = re.search(r'\{.*\}', raw, re.DOTALL)
-    if match:
-        return json.loads(match.group())
-    raise ValueError(f"No JSON in MLX output: {raw!r}")
+    with request.urlopen(req, timeout=120) as response:
+        parsed = json.loads(response.read().decode())
+    content = parsed["message"]["content"]
+    return sanitize_coach_output(row["input"], json.loads(content))
 
 
 def evaluate_output(row, actual):
@@ -253,8 +131,9 @@ def summarize(results):
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate squat-coach datasets against rules or a local model.")
     parser.add_argument("--dataset", default="data/gemini_teacher_dataset.sample.jsonl")
-    parser.add_argument("--backend", choices=["gold", "rules", "mlx"], default="gold")
-    parser.add_argument("--model", default="mlx-community/gemma-3-1b-it-4bit")
+    parser.add_argument("--backend", choices=["gold", "rules", "ollama"], default="gold")
+    parser.add_argument("--model", default="gemma3:1b")
+    parser.add_argument("--base-url", default="http://127.0.0.1:11434")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--output", default="data/coach_eval_results.json")
     return parser.parse_args()
@@ -266,11 +145,6 @@ def main():
     if args.limit:
         rows = rows[: args.limit]
 
-    mlx_model, mlx_tokenizer = None, None
-    if args.backend == "mlx":
-        from mlx_lm import load
-        mlx_model, mlx_tokenizer = load(args.model)
-
     results = []
     for row in rows:
         if args.backend == "gold":
@@ -278,12 +152,12 @@ def main():
         elif args.backend == "rules":
             actual = rules_backend(row)
         else:
-            actual = mlx_backend(row, mlx_model, mlx_tokenizer)
+            actual = ollama_backend(row, args.model, args.base_url)
         results.append(evaluate_output(row, actual))
 
     summary = {
         "backend": args.backend,
-        "model": args.model if args.backend == "mlx" else None,
+        "model": args.model if args.backend == "ollama" else None,
         "dataset": args.dataset,
         **summarize(results),
         "results": results,

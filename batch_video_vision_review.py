@@ -126,7 +126,7 @@ def find_matching_json(video_path, json_dir):
     """Find JSON session file that matches a video file."""
     video_stem = video_path.stem
     # Handle (1), (2) suffixes
-    base_stem = re.sub(r'\(\d+\)$', '', video_stem)
+    base_stem = re.sub(r'\(\d+\)$', '', video_stem).strip()
     json_dir = Path(json_dir)
     candidates = [
         json_dir / f"{video_stem}.json",
@@ -135,9 +135,16 @@ def find_matching_json(video_path, json_dir):
     for c in candidates:
         if c.exists():
             return c
-    # Fuzzy match by session ID pattern
+    # Fuzzy match by session ID pattern - look for overlapping parts
     for json_file in json_dir.glob("*.json"):
-        if base_stem in json_file.stem or json_file.stem in base_stem:
+        json_stem = json_file.stem
+        # Check if video session ID matches json session ID
+        if base_stem == json_stem or video_stem == json_stem:
+            return json_file
+        # Check for partial match on timestamp portion
+        video_ts_match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}', base_stem)
+        json_ts_match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}', json_stem)
+        if video_ts_match and json_ts_match and video_ts_match.group() == json_ts_match.group():
             return json_file
     return None
 
@@ -160,9 +167,15 @@ def extract_frames(video_path, output_dir, num_frames):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # For webm, probe duration or use file size estimate
     duration = get_video_duration(video_path)
+
+    # For streaming webm without duration, estimate from file size
     if not duration or duration < 1:
-        return []
+        file_size = video_path.stat().st_size
+        # Rough estimate: ~500KB/sec for 720p webm
+        estimated_duration = file_size / 500000
+        duration = max(10, min(estimated_duration, 300))  # Clamp 10-300 sec
 
     # Sample frames evenly across duration
     timestamps = [duration * i / (num_frames - 1) for i in range(num_frames)]
@@ -170,12 +183,15 @@ def extract_frames(video_path, output_dir, num_frames):
 
     for idx, ts in enumerate(timestamps):
         output_path = output_dir / f"frame-{idx:02d}-{int(ts*1000)}ms.jpg"
-        subprocess.run(
-            ["ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", str(video_path),
-             "-frames:v", "1", "-q:v", "2", str(output_path)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        if output_path.exists():
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", str(video_path),
+                 "-frames:v", "1", "-q:v", "2", "-update", "1", str(output_path)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if output_path.exists() and output_path.stat().st_size > 1000:
             frame_paths.append(output_path)
 
     return frame_paths
@@ -308,13 +324,31 @@ def build_pose_summary(payload):
         if phase:
             phase_counts[phase] += 1
 
+    # Build prose summaries for each rep
+    rep_prose = []
+    for rep in reps:
+        bottom = rep.get("bottom_frame") or {}
+        tempo = rep.get("tempo") or {}
+        prose = (
+            f"Rep {rep.get('rep_number')}: "
+            f"knee {bottom.get('knee_angle')}°, "
+            f"hip {bottom.get('hip_angle')}°, "
+            f"torso {bottom.get('torso_angle')}°, "
+            f"duration {tempo.get('total_ms')}ms, "
+            f"hip_below_knee={bottom.get('hip_below_knee')}"
+        )
+        rep_prose.append(prose)
+
     return {
         "session_id": payload.get("session_id"),
+        "camera_angle": payload.get("camera_angle"),
+        "camera_height": payload.get("camera_height"),
         "total_frames": len(frames),
         "gate_passed_frames": gate_passed,
         "rep_mode_frames": rep_mode_frames,
         "rep_count": len(reps),
         "reps": reps,
+        "rep_prose_summary": rep_prose,
         "phase_distribution": dict(phase_counts),
         "setup_issues": analyze_setup_issues(frames),
     }
