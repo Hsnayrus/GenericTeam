@@ -66,7 +66,7 @@ Runs entirely on the user's device after initial setup — no cloud calls at run
 
 ## Folder Structure
 
-```
+```bash
 squat-coach-local/
 ├── static/index.html        # Entire frontend (1370 lines, all logic here)
 ├── static/mediapipe/        # WASM runtime + JS bundle (gitignored, downloaded at setup)
@@ -86,7 +86,7 @@ squat-coach-local/
 
 ### Signal Pipeline (browser)
 
-```
+```text
 Camera → MediaPipe WASM (5–15ms/frame)
        → Confidence gate (drop < 0.5)
        → EMA smoother (α=0.7)

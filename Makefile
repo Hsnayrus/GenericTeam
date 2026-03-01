@@ -1,8 +1,7 @@
 PYTHON ?= python3
 PIP ?= pip
-OLLAMA_BASE_URL ?= http://127.0.0.1:11434
-OLLAMA_MODEL_1B ?= gemma3:1b
-OLLAMA_MODEL_4B ?= gemma3:4b
+MLX_MODEL ?= mlx-community/gemma-3-1b-it-4bit
+MLX_ADAPTER_PATH ?=
 RAW_SESSION ?= data/raw_sessions/session.offline.json
 CLEAN_SESSION ?= data/results/session.cleaned.json
 SESSION_VIDEO ?= data/raw_videos/session.webm
@@ -17,7 +16,7 @@ TEACHER_RAW_OUTPUT ?= data/gemini_teacher_raw.json
 GEMINI_MODEL ?= gemini-2.5-pro
 GEMINI_REVIEW_OUTPUT ?= data/results/gemini_rep_review.json
 
-.PHONY: install setup serve dirs clean-session baseline-summary eval-rules eval-ollama-1b eval-ollama-4b compare-session baseline teacher-dry-run teacher-generate review-rep
+.PHONY: install setup serve dirs clean-session baseline-summary eval-rules eval-mlx compare-session baseline teacher-dry-run teacher-generate review-rep
 
 install:
 	$(PIP) install -r requirements.txt
@@ -46,23 +45,19 @@ baseline-summary:
 eval-rules:
 	$(PYTHON) evaluate_coach_dataset.py --backend rules
 
-eval-ollama-1b:
-	$(PYTHON) evaluate_coach_dataset.py --backend ollama --model $(OLLAMA_MODEL_1B) --base-url $(OLLAMA_BASE_URL)
-
-eval-ollama-4b:
-	$(PYTHON) evaluate_coach_dataset.py --backend ollama --model $(OLLAMA_MODEL_4B) --base-url $(OLLAMA_BASE_URL)
+eval-mlx:
+	$(PYTHON) evaluate_coach_dataset.py --backend mlx --model $(MLX_MODEL)
 
 compare-session: dirs
 	$(PYTHON) compare_session_models.py \
 		--session-json $(CLEAN_SESSION) \
 		--video $(SESSION_VIDEO) \
 		--rep $(REP) \
-		--models $(OLLAMA_MODEL_1B) $(OLLAMA_MODEL_4B) \
-		--mode both \
-		--base-url $(OLLAMA_BASE_URL) \
+		--models $(MLX_MODEL) \
+		--mode pose \
 		--output $(COMPARE_OUTPUT)
 
-baseline: clean-session baseline-summary eval-rules eval-ollama-1b eval-ollama-4b compare-session
+baseline: clean-session baseline-summary eval-rules eval-mlx compare-session
 
 teacher-dry-run:
 	$(PYTHON) generate_gemini_dataset.py \

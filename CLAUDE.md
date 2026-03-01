@@ -113,6 +113,35 @@ Angles are **bilaterally averaged** (left + right sides).
 
 Severity levels: `good` (green), `warn` (yellow), `bad` (red), `info` (cyan).
 
+## Rule: Architecture Reasoning Before Every Change
+
+**Before writing any code, you MUST trace the change through the full system.**
+
+This project has two tightly coupled layers:
+
+| Layer | Files |
+|---|---|
+| **Backend** | `server.py`, `generate_synthetic_data.py`, `benchmark_gemma.py` |
+| **Frontend** | `static/index.html` (all JS classes, UI, WebSocket client) |
+| **Protocol** | WebSocket `/ws/coach` — shared JSON contract between the two layers |
+
+**Required checklist for every change:**
+
+1. **Identify the primary file** being changed.
+2. **Determine which layer** it belongs to (backend / frontend / protocol).
+3. **Check cross-layer impact:**
+   - Changing `server.py` WebSocket output → does `index.html` need to handle new/changed fields?
+   - Changing `index.html` WebSocket payload → does `server.py` need to parse new fields?
+   - Changing a severity level, field name, or message format → update both sides.
+   - Adding a new Python endpoint or route → does the frontend need to call it?
+   - Changing constants (thresholds, port, cooldowns) → verify the other layer doesn't hard-code the same value.
+4. **State the impact explicitly** in your response before making edits: "This change affects backend only / frontend only / both layers."
+5. **Make all necessary edits** in the same response — never leave a cross-layer change half-done.
+
+**Never assume a change is isolated.** When in doubt, search the other layer's file for the symbol, field name, or constant you're modifying.
+
+---
+
 ## Development Conventions
 
 - **No external CDN at runtime** — all assets must be served locally by `server.py`
@@ -122,6 +151,124 @@ Severity levels: `good` (green), `warn` (yellow), `bad` (red), `info` (cyan).
 - **Do not add network requests** in the browser frontend — offline-first is a core constraint
 - **Feedback severity** must be one of: `good`, `warn`, `bad`, `info`
 - **Angle computation** must remain bilaterally averaged for consistency
+
+## Logging Conventions
+
+All Python code must use **[Loguru](https://github.com/Delgan/loguru)** for structured, production-grade logging. Never use `print()` or the standard `logging` module for diagnostics.
+
+**Setup (module-level import only — no configuration needed per module):**
+
+```python
+from loguru import logger
+```
+
+Configure sinks once at application entry point (`server.py`):
+
+```python
+from loguru import logger
+import sys
+
+logger.remove()  # remove default stderr sink
+logger.add(sys.stderr, level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}")
+logger.add("logs/squat_coach.log", rotation="10 MB", retention="7 days", level="DEBUG", serialize=True)
+```
+
+**Log levels — use the correct level:**
+
+| Level | When to use |
+|---|---|
+| `DEBUG` | Fine-grained trace info, intermediate values, loop iterations |
+| `INFO` | Key lifecycle events: server start, WebSocket connect/disconnect, rep completed |
+| `WARNING` | Recoverable anomalies: low pose confidence, missing landmarks, skipped frames |
+| `ERROR` | Non-fatal failures: coaching inference error, bad WebSocket message |
+| `CRITICAL` | System-level failures: model load failure, port bind failure |
+
+**Use f-strings (Loguru evaluates lazily by default):**
+
+```python
+# Correct — Loguru defers evaluation until the message is actually logged
+logger.info(f"Rep {rep} completed: phase={phase}, knee_angle={knee_angle:.1f}")
+
+# Also correct — structured key=value binding for machine-readable logs
+logger.bind(rep=rep, phase=phase, knee_angle=knee_angle).info("Rep completed")
+```
+
+**Always include contextual fields** when logging coaching events:
+
+- `phase` — current squat phase
+- `rep_number` — rep count at time of log
+- Relevant angle/ratio values when a form check fires
+
+Use `logger.bind(...)` to attach structured context that persists across a call chain.
+
+**Never log:** raw video frames, webcam buffers, or any data that could reconstruct user biometrics beyond what's needed for debugging.
+
+## Docstring Conventions
+
+All Python functions, classes, and public methods must have **NumPy-style docstrings**. This applies to `server.py`, `generate_synthetic_data.py`, `benchmark_gemma.py`, and any new Python modules.
+
+**Function/method template:**
+
+```python
+def compute_angle(a: tuple, b: tuple, c: tuple) -> float:
+    """Compute the interior angle at vertex b formed by points a, b, c.
+
+    Uses the law of cosines on the three 2-D landmark coordinates.
+    Returns a value in [0, 180] degrees.
+
+    Parameters
+    ----------
+    a : tuple of float
+        (x, y) coordinates of the first endpoint landmark.
+    b : tuple of float
+        (x, y) coordinates of the vertex landmark (angle is measured here).
+    c : tuple of float
+        (x, y) coordinates of the second endpoint landmark.
+
+    Returns
+    -------
+    float
+        Interior angle in degrees, clamped to [0, 180].
+
+    Raises
+    ------
+    ValueError
+        If any coordinate tuple does not have exactly two elements.
+    """
+```
+
+**Class template:**
+
+```python
+class PhaseDetector:
+    """State-machine phase detector for squat rep segmentation.
+
+    Transitions between `standing`, `descent`, `bottom`, and `ascent`
+    states based on bilaterally averaged knee angle thresholds.
+
+    Parameters
+    ----------
+    standing_threshold : float, optional
+        Minimum knee angle (degrees) to classify as standing. Default 155.
+    bottom_threshold : float, optional
+        Maximum knee angle (degrees) to classify as bottom. Default 110.
+
+    Attributes
+    ----------
+    state : str
+        Current phase: one of ``standing``, ``descent``, ``bottom``, ``ascent``.
+    rep_count : int
+        Number of completed full reps since initialisation.
+    """
+```
+
+**Rules:**
+
+- One-line summary on the first line, separated from the body by a blank line.
+- `Parameters`, `Returns`, `Raises`, and `Attributes` sections use the NumPy dashed-underline style.
+- Types go in the section header (e.g., `float`, `str`, `list of dict`), not inline in the summary.
+- Omit sections that do not apply (e.g., no `Raises` if the function cannot raise).
+- Private helpers (single leading underscore) may use a single-line docstring when the name is self-explanatory.
 
 ## Running Locally
 

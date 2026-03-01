@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from loguru import logger
 from urllib import request
 
 
@@ -110,8 +111,8 @@ def main():
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(summary, indent=2))
-    print(f"Wrote benchmark summary to {output}")
-    print(f"Average token overlap score: {summary['avg_token_overlap_score']}")
+    logger.info(f"Wrote benchmark summary to {output}")
+    logger.info(f"Average token overlap score: {summary['avg_token_overlap_score']}")
 
 
 if __name__ == "__main__":
